@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 import os
 import json
@@ -48,7 +48,18 @@ def download_file(filename):
 database.init_db()
 
 def get_db():
-    return database.get_db_connection()
+    if 'db' not in g or g.db.closed != 0:
+        g.db = database.get_db_connection()
+    return g.db
+
+@app.teardown_appcontext
+def close_db(error):
+    db = g.pop('db', None)
+    if db is not None and db.closed == 0:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 @app.route('/')
 def index():
@@ -472,25 +483,31 @@ def get_messages(contact_id):
 def simulate_message_status_updates(msg_id):
     # Wait 1.2 seconds, transition to 'delivered'
     time.sleep(1.2)
+    conn = None
     try:
         conn = database.get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE messages SET status = 'delivered' WHERE id = %s AND status = 'sent'", (msg_id,))
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[Simulator Error] Failed to update status to delivered: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
     
     # Wait another 1.8 seconds, transition to 'read'
     time.sleep(1.8)
+    conn = None
     try:
         conn = database.get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE messages SET status = 'read' WHERE id = %s AND status = 'delivered'", (msg_id,))
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[Simulator Error] Failed to update status to read: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
 def background_message_simulator():
     time.sleep(10) # Start generating messages 10 seconds after server start
@@ -515,21 +532,25 @@ def background_message_simulator():
             now = datetime.now()
             time_str = now.strftime('%I:%M %p')
             
-            conn = database.get_db_connection()
-            cursor = conn.cursor()
-            
-            # 1. Insert incoming unread message
-            cursor.execute('''
-                INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
-                VALUES (%s, %s, FALSE, %s, FALSE, NULL, FALSE, NULL, NULL, '[]'::jsonb, 'unread')
-            ''', (cust_id, text, time_str))
-            
-            # 2. Increment unread count of contact
-            cursor.execute('UPDATE contacts SET unread_count = unread_count + 1 WHERE id = %s', (cust_id,))
-            
-            conn.commit()
-            conn.close()
-            print(f"[Simulator] Generated new unread message from '{cust_id}': {text}")
+            conn = None
+            try:
+                conn = database.get_db_connection()
+                cursor = conn.cursor()
+                
+                # 1. Insert incoming unread message
+                cursor.execute('''
+                    INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
+                    VALUES (%s, %s, FALSE, %s, FALSE, NULL, FALSE, NULL, NULL, '[]'::jsonb, 'unread')
+                ''', (cust_id, text, time_str))
+                
+                # 2. Increment unread count of contact
+                cursor.execute('UPDATE contacts SET unread_count = unread_count + 1 WHERE id = %s', (cust_id,))
+                
+                conn.commit()
+                print(f"[Simulator] Generated new unread message from '{cust_id}': {text}")
+            finally:
+                if conn is not None:
+                    conn.close()
         except Exception as e:
             print(f"[Simulator Error] Background message simulator error: {e}")
 
