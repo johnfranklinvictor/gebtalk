@@ -72,7 +72,7 @@ class ApiService {
         Uri.parse('$baseUrl/auth/send-otp'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'phone': phone}),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -103,7 +103,7 @@ class ApiService {
           'country_name': countryName,
           'country_flag': countryFlag,
         }),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data != null && data['token'] != null) {
