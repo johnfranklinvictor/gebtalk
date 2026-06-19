@@ -1,0 +1,31 @@
+# Environments & Credentials
+.env
+gebtalk_backend/.env
+*.db
+
+# Python
+**/__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/build/
+*.iml
+.metadata
+
+# OS / IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Temporary / Scratch
+scratch/
+*.apk
+*.bak
+*.log
