@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/chat_models.dart';
 import '../services/api_service.dart';
 
@@ -23,6 +24,7 @@ class AppState extends ChangeNotifier {
 
   bool _isAdmin = true;
   String _currentStaffId = 'sarah';
+  Timer? _contactsTimer;
 
   // Getters
   bool get authenticated => _authenticated;
@@ -116,10 +118,31 @@ class AppState extends ChangeNotifier {
       _userProfile = response['user'];
       notifyListeners();
       await fetchInitialData();
+      startContactsPolling();
       return true;
     }
     notifyListeners();
     return false;
+  }
+
+  void startContactsPolling() {
+    _contactsTimer?.cancel();
+    _contactsTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (_authenticated) {
+        refreshContacts();
+      }
+    });
+  }
+
+  void stopContactsPolling() {
+    _contactsTimer?.cancel();
+    _contactsTimer = null;
+  }
+
+  @override
+  void dispose() {
+    stopContactsPolling();
+    super.dispose();
   }
 
   void logout() {
@@ -127,6 +150,7 @@ class AppState extends ChangeNotifier {
     _phoneNumber = '';
     _userProfile = null;
     ApiService.authenticatedPhone = null;
+    stopContactsPolling();
     notifyListeners();
   }
 
@@ -143,6 +167,7 @@ class AppState extends ChangeNotifier {
     
     _isLoading = false;
     notifyListeners();
+    startContactsPolling();
   }
 
   void setActiveFolder(String folderId) {
@@ -275,6 +300,7 @@ class AppState extends ChangeNotifier {
         fileName: old.fileName,
         fileSize: old.fileSize,
         reactions: newReactions,
+        status: old.status,
       );
       notifyListeners();
     }

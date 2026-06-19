@@ -6,6 +6,8 @@ import random
 import urllib.request
 from datetime import datetime
 import database
+import threading
+import time
 
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -279,6 +281,21 @@ def get_contacts():
         ''', (contact['id'],))
         tags_rows = cursor.fetchall()
         contact['tags'] = [dict(t) for t in tags_rows]
+        
+        # Fetch last message metadata
+        cursor.execute('SELECT * FROM messages WHERE contact_id = %s ORDER BY id DESC LIMIT 1', (contact['id'],))
+        msg_row = cursor.fetchone()
+        if msg_row:
+            msg_dict = dict(msg_row)
+            if isinstance(msg_dict['reactions'], str):
+                try:
+                    msg_dict['reactions'] = json.loads(msg_dict['reactions'])
+                except Exception:
+                    msg_dict['reactions'] = []
+            contact['last_message'] = msg_dict
+        else:
+            contact['last_message'] = None
+            
         contacts.append(contact)
         
     conn.close()
@@ -433,6 +450,7 @@ def get_messages(contact_id):
     cursor = conn.cursor()
     
     cursor.execute('UPDATE contacts SET unread_count = 0 WHERE id = %s', (contact_id,))
+    cursor.execute("UPDATE messages SET status = 'read' WHERE contact_id = %s AND is_user = FALSE AND status = 'unread'", (contact_id,))
     conn.commit()
     
     cursor.execute('SELECT * FROM messages WHERE contact_id = %s ORDER BY id ASC', (contact_id,))
@@ -450,6 +468,73 @@ def get_messages(contact_id):
         
     conn.close()
     return jsonify(messages)
+
+def simulate_message_status_updates(msg_id):
+    # Wait 1.2 seconds, transition to 'delivered'
+    time.sleep(1.2)
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE messages SET status = 'delivered' WHERE id = %s AND status = 'sent'", (msg_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Simulator Error] Failed to update status to delivered: {e}")
+    
+    # Wait another 1.8 seconds, transition to 'read'
+    time.sleep(1.8)
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE messages SET status = 'read' WHERE id = %s AND status = 'delivered'", (msg_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Simulator Error] Failed to update status to read: {e}")
+
+def background_message_simulator():
+    time.sleep(10) # Start generating messages 10 seconds after server start
+    customers = ['david', 'customer_a', 'customer_b', 'customer_c', 'customer_d', 'customer_e', 'customer_f', 'customer_g']
+    messages_pool = [
+        "Hi Marcus, just wanted to check if the database migration was completed?",
+        "Are the design specifications ready for review?",
+        "Can we schedule our strategy sync tomorrow morning?",
+        "I received the files, everything looks great!",
+        "Let me know when you are free to jump on a quick call.",
+        "Could you please check the project status on the dashboard?",
+        "Is the test server deployed?",
+        "The pricing contract looks good. Let's proceed."
+    ]
+    while True:
+        try:
+            time.sleep(25) # Generate a new message every 25 seconds
+            import random
+            cust_id = random.choice(customers)
+            text = random.choice(messages_pool)
+            
+            now = datetime.now()
+            time_str = now.strftime('%I:%M %p')
+            
+            conn = database.get_db_connection()
+            cursor = conn.cursor()
+            
+            # 1. Insert incoming unread message
+            cursor.execute('''
+                INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
+                VALUES (%s, %s, FALSE, %s, FALSE, NULL, FALSE, NULL, NULL, '[]'::jsonb, 'unread')
+            ''', (cust_id, text, time_str))
+            
+            # 2. Increment unread count of contact
+            cursor.execute('UPDATE contacts SET unread_count = unread_count + 1 WHERE id = %s', (cust_id,))
+            
+            conn.commit()
+            conn.close()
+            print(f"[Simulator] Generated new unread message from '{cust_id}': {text}")
+        except Exception as e:
+            print(f"[Simulator Error] Background message simulator error: {e}")
+
+# Start the background message simulator
+threading.Thread(target=background_message_simulator, daemon=True).start()
 
 @app.route('/api/contacts/<contact_id>/messages', methods=['POST'])
 def send_message(contact_id):
@@ -482,8 +567,8 @@ def send_message(contact_id):
         return jsonify({'error': 'Contact not found'}), 404
     
     cursor.execute('''
-        INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions)
-        VALUES (%s, %s, TRUE, %s, %s, %s, %s, %s, %s, '[]'::jsonb)
+        INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
+        VALUES (%s, %s, TRUE, %s, %s, %s, %s, %s, %s, '[]'::jsonb, 'sent')
         RETURNING id
     ''', (contact_id, text, time_str, is_audio, duration, is_file, file_name, file_size))
     
@@ -499,8 +584,8 @@ def send_message(contact_id):
             bot_response = "Report compiled successfully. The Aurora Design System specifications have been packaged."
             
         cursor.execute('''
-            INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions)
-            VALUES (%s, %s, FALSE, %s, FALSE, NULL, FALSE, NULL, NULL, '[]'::jsonb)
+            INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
+            VALUES (%s, %s, FALSE, %s, FALSE, NULL, FALSE, NULL, NULL, '[]'::jsonb, 'read')
             RETURNING id
         ''', (contact_id, bot_response, time_str))
         
@@ -511,6 +596,9 @@ def send_message(contact_id):
             bot_message['reactions'] = json.loads(bot_message['reactions'])
         
     conn.commit()
+    
+    # Launch status simulation thread for outgoing user message
+    threading.Thread(target=simulate_message_status_updates, args=(user_msg_id,), daemon=True).start()
     
     cursor.execute('SELECT * FROM messages WHERE id = %s', (user_msg_id,))
     user_message = dict(cursor.fetchone())

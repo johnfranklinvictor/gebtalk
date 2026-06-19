@@ -93,6 +93,7 @@ def init_db():
             file_name TEXT,
             file_size TEXT,
             reactions JSONB DEFAULT '[]'::jsonb,
+            status TEXT DEFAULT 'sent',
             FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
         )
     ''')
@@ -143,6 +144,16 @@ def init_db():
         cursor.execute("ALTER TABLE contacts ADD COLUMN email TEXT")
         cursor.execute("ALTER TABLE contacts ADD COLUMN notes TEXT")
         cursor.execute("ALTER TABLE contacts ADD COLUMN country_code TEXT")
+
+    # Schema migration helper for messages columns
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='messages' AND column_name='status'
+    """)
+    if not cursor.fetchone():
+        cursor.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'sent'")
+
 
     # Create Broadcast Lists table
     cursor.execute('''
@@ -261,34 +272,34 @@ def init_db():
     if cursor.fetchone()['count'] == 0:
         messages = [
             # Sarah Jenkins
-            ('sarah', 'Hi! EBI informed me you wanted to review the project status. I uploaded the design system specs and left a voice note.', 0, '10:24 AM', 0, None, 0, None, None, '[]'),
-            ('sarah', None, 0, '10:25 AM', 1, '0:42', 0, None, None, '[]'),
-            ('sarah', None, 0, '10:25 AM', 0, None, 1, 'aurora_design_specs.pdf', '4.8 MB • PDF', '[]'),
-            ('sarah', "Thanks Sarah! EBI is compiling the code framework now. I'll review these specs right away.", 1, '10:28 AM', 0, None, 0, None, None, '[]'),
+            ('sarah', 'Hi! EBI informed me you wanted to review the project status. I uploaded the design system specs and left a voice note.', 0, '10:24 AM', 0, None, 0, None, None, '[]', 'read'),
+            ('sarah', None, 0, '10:25 AM', 1, '0:42', 0, None, None, '[]', 'read'),
+            ('sarah', None, 0, '10:25 AM', 0, None, 1, 'aurora_design_specs.pdf', '4.8 MB • PDF', '[]', 'read'),
+            ('sarah', "Thanks Sarah! EBI is compiling the code framework now. I'll review these specs right away.", 1, '10:28 AM', 0, None, 0, None, None, '[]', 'read'),
             
             # EBI Bot
-            ('ebi', "Hello! I am EBI, your business co-pilot. I can compile spreadsheets, schedule strategy recaps, or write code templates. Ask me to 'summarize projects' or 'generate report'!", 0, 'Just Now', 0, None, 0, None, None, '[]'),
+            ('ebi', "Hello! I am EBI, your business co-pilot. I can compile spreadsheets, schedule strategy recaps, or write code templates. Ask me to 'summarize projects' or 'generate report'!", 0, 'Just Now', 0, None, 0, None, None, '[]', 'read'),
             
             # David Miller
-            ('david', 'Hi Marcus, the Aurora prototype looks great. Can we review the pricing contract today?', 0, '9:45 AM', 0, None, 0, None, None, '[]'),
+            ('david', 'Hi Marcus, the Aurora prototype looks great. Can we review the pricing contract today?', 0, '9:45 AM', 0, None, 0, None, None, '[]', 'unread'),
             
             # Diana Prince (Vortex)
-            ('customer_d', 'Hey, we noticed some issues in the integration workspace. Can we jump on a call?', 0, 'Yesterday', 0, None, 0, None, None, '[]'),
-            ('customer_d', 'Let me know when you are free.', 0, 'Yesterday', 0, None, 0, None, None, '[]'),
+            ('customer_d', 'Hey, we noticed some issues in the integration workspace. Can we jump on a call?', 0, 'Yesterday', 0, None, 0, None, None, '[]', 'unread'),
+            ('customer_d', 'Let me know when you are free.', 0, 'Yesterday', 0, None, 0, None, None, '[]', 'unread'),
             
             # Emma Watson
-            ('emma', 'Hi Marcus, please approve the team expansion request on the HR portal when you get a chance.', 0, 'Yesterday', 0, None, 0, None, None, '[]'),
+            ('emma', 'Hi Marcus, please approve the team expansion request on the HR portal when you get a chance.', 0, 'Yesterday', 0, None, 0, None, None, '[]', 'read'),
             
             # Support
-            ('support', 'Ticket TKT-8902 has been routed to engineering. System status is fully optimized.', 0, 'Monday', 0, None, 0, None, None, '[]'),
+            ('support', 'Ticket TKT-8902 has been routed to engineering. System status is fully optimized.', 0, 'Monday', 0, None, 0, None, None, '[]', 'read'),
             
             # Other Customers placeholder messages to avoid empty histories
-            ('customer_a', 'Hello, Alice here. Looking forward to our sync.', 0, 'Tuesday', 0, None, 0, None, None, '[]'),
-            ('customer_b', 'Hi Marcus, did you receive the transaction reports?', 0, 'Wednesday', 0, None, 0, None, None, '[]'),
-            ('customer_c', 'We are good to go for the project launch next week.', 0, 'Monday', 0, None, 0, None, None, '[]'),
-            ('customer_e', 'Understood. Will update the team.', 0, 'Friday', 0, None, 0, None, None, '[]'),
-            ('customer_f', 'Can you send me the contract drafts?', 0, 'Thursday', 0, None, 0, None, None, '[]'),
-            ('customer_g', 'The Titan build looks stable on our end.', 0, '3 Days Ago', 0, None, 0, None, None, '[]')
+            ('customer_a', 'Hello, Alice here. Looking forward to our sync.', 0, 'Tuesday', 0, None, 0, None, None, '[]', 'read'),
+            ('customer_b', 'Hi Marcus, did you receive the transaction reports?', 0, 'Wednesday', 0, None, 0, None, None, '[]', 'read'),
+            ('customer_c', 'We are good to go for the project launch next week.', 0, 'Monday', 0, None, 0, None, None, '[]', 'read'),
+            ('customer_e', 'Understood. Will update the team.', 0, 'Friday', 0, None, 0, None, None, '[]', 'read'),
+            ('customer_f', 'Can you send me the contract drafts?', 0, 'Thursday', 0, None, 0, None, None, '[]', 'read'),
+            ('customer_g', 'The Titan build looks stable on our end.', 0, '3 Days Ago', 0, None, 0, None, None, '[]', 'read')
         ]
         
         # Convert integers to actual Python booleans for PostgreSQL boolean fields
@@ -301,8 +312,8 @@ def init_db():
             postgres_messages.append(tuple(msg_list))
 
         cursor.executemany('''
-            INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO messages (contact_id, text, is_user, time, is_audio, duration, is_file, file_name, file_size, reactions, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', postgres_messages)
 
     conn.commit()

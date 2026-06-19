@@ -44,6 +44,7 @@ class Contact {
   final String? email;
   final String? notes;
   final String? countryCode;
+  final Message? lastMessage;
 
   Contact({
     required this.id,
@@ -59,6 +60,7 @@ class Contact {
     this.email,
     this.notes,
     this.countryCode,
+    this.lastMessage,
   });
 
   factory Contact.fromJson(Map<String, dynamic> json) {
@@ -79,6 +81,7 @@ class Contact {
       email: json['email'],
       notes: json['notes'],
       countryCode: json['country_code'],
+      lastMessage: json['last_message'] != null ? Message.fromJson(json['last_message']) : null,
     );
   }
 
@@ -90,6 +93,7 @@ class Contact {
     String? email,
     String? notes,
     String? countryCode,
+    Message? lastMessage,
   }) {
     return Contact(
       id: id,
@@ -105,6 +109,7 @@ class Contact {
       email: email ?? this.email,
       notes: notes ?? this.notes,
       countryCode: countryCode ?? this.countryCode,
+      lastMessage: lastMessage ?? this.lastMessage,
     );
   }
 }
@@ -121,6 +126,7 @@ class Message {
   final String? fileName;
   final String? fileSize;
   final List<String> reactions;
+  final String status;
 
   Message({
     required this.id,
@@ -134,6 +140,7 @@ class Message {
     this.fileName,
     this.fileSize,
     required this.reactions,
+    required this.status,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -152,6 +159,7 @@ class Message {
       fileName: json['file_name'],
       fileSize: json['file_size'],
       reactions: parsedReactions,
+      status: json['status'] ?? 'sent',
     );
   }
 }

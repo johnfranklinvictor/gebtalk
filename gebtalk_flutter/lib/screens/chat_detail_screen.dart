@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/app_state.dart';
 import '../models/chat_models.dart';
 import '../services/api_service.dart';
@@ -1134,6 +1135,23 @@ class _ChatDetailContentState extends State<ChatDetailContent>
     );
   }
 
+  Widget _buildStatusCheckmark(String status) {
+    Widget icon;
+    if (status == 'sent') {
+      icon = const Icon(Icons.check, size: 12, color: AppColors.textMuted);
+    } else if (status == 'delivered') {
+      icon = const Icon(Icons.done_all_rounded, size: 13, color: AppColors.textMuted);
+    } else if (status == 'read') {
+      icon = const Icon(Icons.done_all_rounded, size: 13, color: AppColors.primary);
+    } else {
+      return const SizedBox.shrink();
+    }
+    
+    return icon
+        .animate(key: ValueKey(status))
+        .scale(duration: 200.ms, curve: Curves.easeOutBack);
+  }
+
   Widget _buildMessageBubble(Message msg, AppState appState) {
     final isUser = msg.isUser;
 
@@ -1232,6 +1250,10 @@ class _ChatDetailContentState extends State<ChatDetailContent>
                   msg.time,
                   style: const TextStyle(color: AppColors.textLight, fontSize: 9),
                 ),
+                if (isUser) ...[
+                  const SizedBox(width: 4),
+                  _buildStatusCheckmark(msg.status),
+                ],
                 const SizedBox(width: 6),
                 // Reactions list
                 if (msg.reactions.isNotEmpty)

@@ -18,6 +18,99 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
   bool _isHovered = false;
   Offset _mousePosition = Offset.zero;
 
+  Widget _buildStatusCheckmark(String status) {
+    if (status == 'sent') {
+      return const Icon(Icons.check, size: 13, color: AppColors.textMuted);
+    } else if (status == 'delivered') {
+      return const Icon(Icons.done_all_rounded, size: 14, color: AppColors.textMuted);
+    } else if (status == 'read') {
+      return const Icon(Icons.done_all_rounded, size: 14, color: AppColors.primary);
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildLastMessagePreview() {
+    final msg = widget.contact.lastMessage;
+    if (msg == null) {
+      return Text(
+        widget.contact.phone,
+        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    String prefix = '';
+    String content = '';
+    IconData? icon;
+    Color iconColor = AppColors.primary;
+
+    if (msg.isAudio) {
+      prefix = 'Voice Note';
+      content = msg.duration != null ? ' • ${msg.duration}' : '';
+      icon = Icons.mic_rounded;
+    } else if (msg.isFile) {
+      final name = msg.fileName ?? 'File';
+      final isImg = name.toLowerCase().endsWith('.png') ||
+          name.toLowerCase().endsWith('.jpg') ||
+          name.toLowerCase().endsWith('.jpeg') ||
+          name.toLowerCase().endsWith('.gif');
+      if (isImg) {
+        prefix = 'Photo';
+        content = '';
+        icon = Icons.image_rounded;
+      } else if (name.toLowerCase().endsWith('.pdf')) {
+        prefix = 'Document';
+        content = ' • $name';
+        icon = Icons.picture_as_pdf_rounded;
+        iconColor = AppColors.secondary;
+      } else {
+        prefix = 'File';
+        content = ' • $name';
+        icon = Icons.insert_drive_file_rounded;
+      }
+    } else {
+      prefix = msg.text;
+      content = '';
+    }
+
+    return Row(
+      children: [
+        if (msg.isUser) ...[
+          _buildStatusCheckmark(msg.status),
+          const SizedBox(width: 4),
+        ],
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: iconColor.withOpacity(0.85)),
+          const SizedBox(width: 4),
+        ],
+        Expanded(
+          child: RichText(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                fontFamily: 'Product Sans',
+              ),
+              children: [
+                TextSpan(
+                  text: prefix,
+                  style: TextStyle(
+                    color: msg.isAudio || msg.isFile ? Colors.white.withOpacity(0.85) : AppColors.textMuted,
+                    fontWeight: msg.isAudio || msg.isFile ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                TextSpan(text: content),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Generate a mock activity score
@@ -116,20 +209,40 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      widget.contact.name.toUpperCase(),
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1),
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              widget.contact.name.toUpperCase(),
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip')) ...[
+                                            const SizedBox(width: 6),
+                                            const Icon(Icons.star, color: AppColors.secondary, size: 13)
+                                                .animate()
+                                                .shimmer(duration: 1.seconds),
+                                          ]
+                                        ],
+                                      ),
                                     ),
-                                    if (widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip')) ...[
-                                      const SizedBox(width: 8),
-                                      const Icon(Icons.star, color: AppColors.secondary, size: 14)
-                                          .animate()
-                                          .shimmer(duration: 1.seconds),
-                                    ]
+                                    if (widget.contact.lastMessage != null) ...[
+                                      Text(
+                                        widget.contact.lastMessage!.time,
+                                        style: const TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 10,
+                                          fontFamily: 'Product Sans',
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Text(widget.contact.phone, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                _buildLastMessagePreview(),
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
@@ -157,8 +270,34 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                               ),
                             ),
                             
+                          if (widget.contact.unreadCount > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                color: AppColors.secondary,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 20,
+                                minHeight: 20,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${widget.contact.unreadCount}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Product Sans',
+                                  ),
+                                ),
+                              ),
+                            ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                             .scale(end: const Offset(1.15, 1.15), duration: 1200.ms, curve: Curves.easeInOut),
+                          ],
                           const SizedBox(width: 12),
-                          const Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 16),
+                          const Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 15),
                         ],
                       ),
                     ),

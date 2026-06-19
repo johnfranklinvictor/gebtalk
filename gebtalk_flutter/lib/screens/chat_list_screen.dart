@@ -232,10 +232,16 @@ class _ChatListScreenState extends State<ChatListScreen>
     if (_sortBy == 'name') {
       sortedContacts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     } else if (_sortBy == 'recent') {
-      // Sort by unread count first, then name
+      // Sort by unread count first, then by last message ID (recent activity) descending, then by name
       sortedContacts.sort((a, b) {
         int cmp = b.unreadCount.compareTo(a.unreadCount);
         if (cmp != 0) return cmp;
+        
+        int bLastId = b.lastMessage?.id ?? 0;
+        int aLastId = a.lastMessage?.id ?? 0;
+        int timeCmp = bLastId.compareTo(aLastId);
+        if (timeCmp != 0) return timeCmp;
+        
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
     }
@@ -315,6 +321,16 @@ class _ChatListScreenState extends State<ChatListScreen>
                     itemBuilder: (context, index) {
                       final folder = folders[index];
                       final isSelected = appState.activeFolderId == folder.id;
+                      // Calculate folder unread count
+                      int folderUnread = 0;
+                      if (folder.id == 'all') {
+                        folderUnread = appState.contacts.fold(0, (sum, c) => sum + c.unreadCount);
+                      } else {
+                        folderUnread = appState.contacts
+                            .where((c) => c.folder == folder.id)
+                            .fold(0, (sum, c) => sum + c.unreadCount);
+                      }
+
                       return GestureDetector(
                         onTap: () => appState.setActiveFolder(folder.id),
                         child: AnimatedContainer(
@@ -340,14 +356,38 @@ class _ChatListScreenState extends State<ChatListScreen>
                                 : [],
                           ),
                           child: Center(
-                            child: Text(
-                              folder.name,
-                              style: TextStyle(
-                                color: isSelected ? Colors.white : AppColors.textMuted,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                fontFamily: 'Product Sans',
-                                fontSize: 12,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  folder.name,
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.white : AppColors.textMuted,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    fontFamily: 'Product Sans',
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (folderUnread > 0) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.secondary.withValues(alpha: 0.9),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$folderUnread',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Product Sans',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ),
@@ -841,6 +881,21 @@ class _ChatListScreenState extends State<ChatListScreen>
 
   Widget _buildStaffFolderView(AppState appState) {
     final staffMembers = appState.contacts.where((c) => c.folder == 'staff').toList();
+    if (_sortBy == 'name') {
+      staffMembers.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    } else if (_sortBy == 'recent') {
+      staffMembers.sort((a, b) {
+        int cmp = b.unreadCount.compareTo(a.unreadCount);
+        if (cmp != 0) return cmp;
+        
+        int bLastId = b.lastMessage?.id ?? 0;
+        int aLastId = a.lastMessage?.id ?? 0;
+        int timeCmp = bLastId.compareTo(aLastId);
+        if (timeCmp != 0) return timeCmp;
+        
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    }
     return Column(
       children: [
         if (appState.isAdmin)
