@@ -721,8 +721,8 @@ def profile():
                 country_flag = COALESCE(%s, country_flag)
             WHERE id = %s
         ''', (name, role, phone, avatar, email,
-              1 if notifications_enabled else 0, 1 if notification_sound else 0, 1 if notification_vibration else 0,
-              1 if security_2fa else 0, 1 if read_receipts else 0, 1 if last_seen_visible else 0,
+              bool(notifications_enabled), bool(notification_sound), bool(notification_vibration),
+              bool(security_2fa), bool(read_receipts), bool(last_seen_visible),
               country_code, country_name, country_flag, user_id))
         conn.commit()
         
