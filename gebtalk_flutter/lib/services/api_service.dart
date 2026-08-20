@@ -45,7 +45,11 @@ class ApiService {
   }
 
   static Map<String, String> _authHeaders({bool json = false}) {
-    final headers = <String, String>{};
+    final headers = <String, String>{
+      'Bypass-Tunnel-Reminder': 'true',
+      'bypass-tunnel-reminder': 'true',
+      'ngrok-skip-browser-warning': 'true',
+    };
     if (json) headers['Content-Type'] = 'application/json';
     if (authenticatedPhone != null) {
       headers['Authorization'] = 'Bearer $authenticatedPhone';
@@ -152,7 +156,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login-email'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _authHeaders(json: true),
         body: jsonEncode({
           'identifier': identifier.trim(),
           'email': identifier.trim(),
@@ -160,14 +164,20 @@ class ApiService {
           'password': password,
         }),
       ).timeout(const Duration(seconds: 30));
+
+      final body = response.body.trim();
+      if (body.startsWith('<')) {
+        ErrorHandler.showError('API server returned unexpected response. Check server endpoint in Settings (⚙️).');
+        return null;
+      }
+
+      final data = jsonDecode(body);
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
         if (data != null && data['token'] != null) {
           authenticatedPhone = data['token'];
         }
         return data;
       } else {
-        final data = jsonDecode(response.body);
         ErrorHandler.showError(data['error'] ?? 'Invalid username/email or password');
       }
     } catch (e) {
