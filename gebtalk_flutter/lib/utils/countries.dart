@@ -5,6 +5,8 @@ class Country {
   final String formatPlaceholder;
   final String regexPattern;
 
+  String get dialCode => code;
+
   const Country({
     required this.name,
     required this.code,

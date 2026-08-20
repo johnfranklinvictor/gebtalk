@@ -7,13 +7,24 @@ import '../widgets/ebi_bot.dart';
 import '../widgets/animations.dart';
 import '../theme/colors.dart';
 import 'chat_detail_screen.dart';
+import 'group_create_screen.dart';
+import 'settings_screen.dart';
+import 'camera_screen.dart';
+import 'starred_messages_screen.dart';
 import 'broadcast_screen.dart';
+import 'community_screen.dart';
+import 'newsletter_screen.dart';
+import 'linked_devices_screen.dart';
+import 'payment_screen.dart';
+import 'archived_chats_screen.dart';
+import 'calls_screen.dart';
+import '../services/webrtc_service.dart';
 import '../widgets/command_vault.dart';
 import '../widgets/interactive_customer_card.dart';
 
 class ChatListScreen extends StatefulWidget {
   final Function(int)? onTabChanged;
-  const ChatListScreen({Key? key, this.onTabChanged}) : super(key: key);
+  const ChatListScreen({super.key, this.onTabChanged});
 
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
@@ -64,32 +75,6 @@ class _ChatListScreenState extends State<ChatListScreen>
     super.dispose();
   }
 
-  void _navigateToChatDetail(BuildContext context, String contactId) async {
-    final appState = Provider.of<AppState>(context, listen: false);
-    await appState.selectContact(contactId);
-
-    if (mounted) {
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const ChatDetailScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const begin = Offset(1.0, 0.0);
-            const end = Offset.zero;
-            const curve = Curves.easeOutCubic;
-            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-            return SlideTransition(
-              position: animation.drive(tween),
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 350),
-        ),
-      ).then((_) {
-        appState.closeConversation();
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -110,29 +95,30 @@ class _ChatListScreenState extends State<ChatListScreen>
             child: Stack(
               children: [
                 bodyWidget,
-                if (appState.activeFolderId == 'customers')
+                // Universal WhatsApp Floating Action Button (Only for CEO and Manager)
+                if (appState.canCreateAccounts)
                   Positioned(
                     bottom: 110,
-                    left: 20,
+                    right: 20,
                     child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: AppColors.primary.withValues(alpha: 0.4),
-                            blurRadius: 16,
+                            blurRadius: 18,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
                       child: FloatingActionButton(
-                        onPressed: () => _showAddContactDialog(context, appState),
+                        onPressed: () => _showNewActionSheet(context, appState),
                         backgroundColor: AppColors.primary,
-                        elevation: 0,
+                        elevation: 4,
                         child: const Icon(
-                          Icons.add,
+                          Icons.chat_rounded,
                           color: Colors.black,
-                          size: 28,
+                          size: 24,
                         ),
                       ),
                     ),
@@ -149,17 +135,26 @@ class _ChatListScreenState extends State<ChatListScreen>
     );
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  //  GRADIENT HEADER
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────
+  //  GRADIENT HEADER WITH WHATSAPP 3-DOTS ACTION MENU
+  // ─────────────────────────────────────────────────────────────
   Widget _buildGradientHeader(AppState appState) {
     return Container(
       decoration: BoxDecoration(
-        gradient: AppColors.headerGradient,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF020408), Color(0xFF060A12), Color(0xFF0A0E18)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.3),
-            blurRadius: 12,
+            color: AppColors.primary.withValues(alpha: 0.06),
+            blurRadius: 25,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 15,
             offset: const Offset(0, 4),
           ),
         ],
@@ -167,60 +162,263 @@ class _ChatListScreenState extends State<ChatListScreen>
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              // Teal glowing icon
+              // Glowing icon with energy border
               Container(
-                width: 36,
-                height: 36,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.15),
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.15),
+                      AppColors.primary.withValues(alpha: 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
                 child: const Icon(
                   Icons.chat_rounded,
-                  color: Colors.white,
+                  color: AppColors.primary,
                   size: 18,
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'GEBTALK CHAT',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'Product Sans',
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2.0,
-                  fontSize: 18,
-                ),
-              ),
-              const Spacer(),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => appState.refreshContacts(),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                    child: const Icon(
-                      Icons.refresh_rounded,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'GEBTALK',
+                    style: TextStyle(
                       color: Colors.white,
-                      size: 20,
+                      fontFamily: 'Product Sans',
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 3.0,
+                      fontSize: 17,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 1),
+                  Text(
+                    'SECURE COMMUNICATIONS',
+                    style: TextStyle(
+                      color: AppColors.primary.withValues(alpha: 0.6),
+                      fontFamily: 'Product Sans',
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.0,
+                      fontSize: 8,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // Camera Quick Action Button
+              IconButton(
+                icon: const Icon(Icons.camera_alt_outlined, color: Colors.white70, size: 22),
+                tooltip: 'Camera',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CameraScreen(
+                        onMediaCaptured: (path, caption) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Captured media ready: $caption')),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // Refresh Contacts Button
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: AppColors.textMuted, size: 20),
+                tooltip: 'Refresh',
+                onPressed: () => appState.refreshContacts(),
+              ),
+              // WhatsApp 3-Dots Popup Menu
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 22),
+                color: AppColors.surface,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onSelected: (value) => _handleHeaderMenuAction(value, appState),
+                itemBuilder: (context) => [
+                  if (appState.canCreateAccounts)
+                    const PopupMenuItem(
+                      value: 'group',
+                      child: Row(
+                        children: [
+                          Icon(Icons.group_add_rounded, color: AppColors.primary, size: 20),
+                          SizedBox(width: 12),
+                          Text('New Group', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  if (appState.canCreateAccounts)
+                    const PopupMenuItem(
+                      value: 'broadcast',
+                      child: Row(
+                        children: [
+                          Icon(Icons.campaign_rounded, color: Colors.orangeAccent, size: 20),
+                          SizedBox(width: 12),
+                          Text('New Broadcast', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuItem(
+                    value: 'communities',
+                    child: Row(
+                      children: [
+                        Icon(Icons.groups_rounded, color: Colors.blueAccent, size: 20),
+                        SizedBox(width: 12),
+                        Text('Communities', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'channels',
+                    child: Row(
+                      children: [
+                        Icon(Icons.newspaper_rounded, color: Colors.cyanAccent, size: 20),
+                        SizedBox(width: 12),
+                        Text('Channels & News', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'devices',
+                    child: Row(
+                      children: [
+                        Icon(Icons.devices_rounded, color: Colors.purpleAccent, size: 20),
+                        SizedBox(width: 12),
+                        Text('Linked Devices', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'calls',
+                    child: Row(
+                      children: [
+                        Icon(Icons.call_rounded, color: Color(0xFF38BDF8), size: 20),
+                        SizedBox(width: 12),
+                        Text('Call Logs & VoIP', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'starred',
+                    child: Row(
+                      children: [
+                        Icon(Icons.star_rounded, color: Colors.amberAccent, size: 20),
+                        SizedBox(width: 12),
+                        Text('Starred Messages', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'payments',
+                    child: Row(
+                      children: [
+                        Icon(Icons.payment_rounded, color: Colors.greenAccent, size: 20),
+                        SizedBox(width: 12),
+                        Text('GebTalk Payments', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 1),
+                  const PopupMenuItem(
+                    value: 'settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings_rounded, color: Colors.white70, size: 20),
+                        SizedBox(width: 12),
+                        Text('Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _handleHeaderMenuAction(String value, AppState appState) {
+    switch (value) {
+      case 'group':
+        if (!appState.canCreateAccounts) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access restricted: Only CEO and Manager can create groups.'),
+              backgroundColor: Color(0xFFEF4444),
+            ),
+          );
+          return;
+        }
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupCreateScreen()));
+        break;
+      case 'broadcast':
+        if (!appState.canCreateAccounts) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access restricted: Only CEO and Manager can broadcast messages.'),
+              backgroundColor: Color(0xFFEF4444),
+            ),
+          );
+          return;
+        }
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const BroadcastScreen()));
+        break;
+      case 'communities':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const CommunityScreen()));
+        break;
+      case 'channels':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const NewsletterScreen()));
+        break;
+      case 'devices':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const LinkedDevicesScreen()));
+        break;
+      case 'calls':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CallsScreen(
+              callLogs: appState.callLogs,
+              onStartCall: (contact, isVideo) {
+                final webrtcService = Provider.of<WebRtcService>(context, listen: false);
+                webrtcService.startCall(contact.id, contact.name, peerAvatar: contact.avatar);
+              },
+            ),
+          ),
+        );
+        break;
+      case 'starred':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const StarredMessagesScreen()));
+        break;
+      case 'payments':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentScreen()));
+        break;
+      case 'settings':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+        break;
+    }
   }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -313,87 +511,101 @@ class _ChatListScreenState extends State<ChatListScreen>
               // ─── Folder Chips ───
               if (folders.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                SizedBox(
-                  height: 38,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: folders.length,
-                    itemBuilder: (context, index) {
-                      final folder = folders[index];
-                      final isSelected = appState.activeFolderId == folder.id;
-                      // Calculate folder unread count
-                      int folderUnread = 0;
-                      if (folder.id == 'all') {
-                        folderUnread = appState.contacts.fold(0, (sum, c) => sum + c.unreadCount);
-                      } else {
-                        folderUnread = appState.contacts
-                            .where((c) => c.folder == folder.id)
-                            .fold(0, (sum, c) => sum + c.unreadCount);
+                Builder(
+                  builder: (context) {
+                    final allowedFolders = folders.where((f) {
+                      if (appState.isCustomerRole) {
+                        return f.id == 'all' || f.id == 'support';
                       }
+                      if (appState.isStaffRole && !appState.isCeo && !appState.isManager) {
+                        return f.id == 'all' || f.id == 'support' || f.id == 'customers';
+                      }
+                      return true;
+                    }).toList();
 
-                      return GestureDetector(
-                        onTap: () => appState.setActiveFolder(folder.id),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: isSelected ? AppColors.primaryGradient : null,
-                            color: isSelected ? null : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                            border: isSelected
-                                ? null
-                                : Border.all(color: AppColors.border),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(alpha: 0.25),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ]
-                                : [],
-                          ),
-                          child: Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  folder.name,
-                                  style: TextStyle(
-                                    color: isSelected ? Colors.white : AppColors.textMuted,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                    fontFamily: 'Product Sans',
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                if (folderUnread > 0) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                    decoration: BoxDecoration(
-                                      color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.secondary.withValues(alpha: 0.9),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '$folderUnread',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
+                    return SizedBox(
+                      height: 38,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: allowedFolders.length,
+                        itemBuilder: (context, index) {
+                          final folder = allowedFolders[index];
+                          final isSelected = appState.activeFolderId == folder.id;
+                          // Calculate folder unread count
+                          int folderUnread = 0;
+                          if (folder.id == 'all') {
+                            folderUnread = appState.contacts.fold(0, (sum, c) => sum + c.unreadCount);
+                          } else {
+                            folderUnread = appState.contacts
+                                .where((c) => c.folder == folder.id)
+                                .fold(0, (sum, c) => sum + c.unreadCount);
+                          }
+
+                          return GestureDetector(
+                            onTap: () => appState.setActiveFolder(folder.id),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutCubic,
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                              decoration: BoxDecoration(
+                                gradient: isSelected ? AppColors.primaryGradient : null,
+                                color: isSelected ? null : Colors.transparent,
+                                borderRadius: BorderRadius.circular(20),
+                                border: isSelected
+                                    ? null
+                                    : Border.all(color: AppColors.border),
+                                boxShadow: isSelected
+                                    ? [
+                                        BoxShadow(
+                                          color: AppColors.primary.withValues(alpha: 0.25),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      folder.name,
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : AppColors.textMuted,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                                         fontFamily: 'Product Sans',
+                                        fontSize: 12,
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ],
+                                    if (folderUnread > 0) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.secondary.withValues(alpha: 0.9),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '$folderUnread',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Product Sans',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
+                    );
+                  },
                 ),
               ],
               const SizedBox(height: 12),
@@ -426,45 +638,226 @@ class _ChatListScreenState extends State<ChatListScreen>
           ),
         ),
 
-        // â”€â”€â”€ Contact List / Shimmer / Empty / Staff view â”€â”€â”€
+        // ─── Contact List / Shimmer / Empty / Staff view ───
         Expanded(
           child: appState.isLoading && contacts.isEmpty
               ? _buildShimmerList()
               : appState.activeFolderId == 'staff'
                   ? _buildStaffFolderView(appState)
-                  : (contacts.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.forum_outlined,
-                                color: AppColors.textLight.withValues(alpha: 0.5),
-                                size: 48,
-                              ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                "No conversations found",
-                                style: TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontFamily: 'Product Sans',
-                                  fontSize: 14,
+                  : ListView(
+                      padding: const EdgeInsets.only(left: 14, right: 14, top: 6, bottom: 110),
+                      children: [
+                        if (appState.archivedCount > 0)
+                          InkWell(
+                            onTap: () => appState.toggleShowArchived(),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: appState.showArchivedChats
+                                    ? AppColors.primary.withValues(alpha: 0.15)
+                                    : AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: appState.showArchivedChats
+                                      ? AppColors.primary.withValues(alpha: 0.4)
+                                      : Colors.white.withValues(alpha: 0.05),
                                 ),
                               ),
-                            ],
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.archive_outlined,
+                                    color: appState.showArchivedChats ? AppColors.primary : Colors.white70,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Text(
+                                    appState.showArchivedChats ? 'Showing Archived Chats' : 'Archived',
+                                    style: TextStyle(
+                                      color: appState.showArchivedChats ? AppColors.primary : Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${appState.archivedCount}',
+                                      style: const TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(left: 14, right: 14, top: 6, bottom: 110),
-                          itemCount: sortedContacts.length,
-                          itemBuilder: (context, index) {
+
+                        if (sortedContacts.isEmpty)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 60),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.forum_outlined,
+                                    color: AppColors.textLight.withValues(alpha: 0.5),
+                                    size: 48,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    appState.showArchivedChats
+                                        ? "No archived conversations"
+                                        : "No conversations found",
+                                    style: const TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontFamily: 'Product Sans',
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          ...List.generate(sortedContacts.length, (index) {
                             final contact = sortedContacts[index];
+                            final isPinned = appState.isPinnedChat(contact.id);
+                            final isMuted = appState.isMuted(contact.id);
+                            final isArchived = appState.isArchived(contact.id);
+
                             return AnimatedListItem(
                               index: index,
-                              child: _buildContactCard(contact),
+                              child: Dismissible(
+                                key: Key('chat_${contact.id}'),
+                                confirmDismiss: (direction) async {
+                                  if (direction == DismissDirection.endToStart) {
+                                    await appState.toggleArchiveChat(contact.id);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          isArchived
+                                              ? 'Unarchived ${contact.name}'
+                                              : 'Archived ${contact.name}',
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  } else if (direction == DismissDirection.startToEnd) {
+                                    await appState.togglePinChat(contact.id);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          isPinned
+                                              ? 'Unpinned ${contact.name}'
+                                              : 'Pinned ${contact.name}',
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                  return false;
+                                },
+                                background: Container(
+                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.only(left: 20),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.8),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        isPinned ? Icons.push_pin_outlined : Icons.push_pin,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        isPinned ? 'Unpin' : 'Pin',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                secondaryBackground: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.withValues(alpha: 0.8),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        isArchived ? 'Unarchive' : 'Archive',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                child: Stack(
+                                  children: [
+                                    _buildContactCard(contact),
+                                    if (isPinned || isMuted)
+                                      Positioned(
+                                        top: 12,
+                                        right: 16,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (isMuted)
+                                              Padding(
+                                                padding: const EdgeInsets.only(right: 4),
+                                                child: Icon(
+                                                  Icons.volume_off_rounded,
+                                                  color: Colors.white.withValues(alpha: 0.35),
+                                                  size: 14,
+                                                ),
+                                              ),
+                                            if (isPinned)
+                                              Icon(
+                                                Icons.push_pin_rounded,
+                                                color: AppColors.primary.withValues(alpha: 0.8),
+                                                size: 14,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             );
-                          },
-                        )),
+                          }),
+                      ],
+                    ),
         ),
       ],
     );
@@ -494,14 +887,14 @@ class _ChatListScreenState extends State<ChatListScreen>
                 ),
               ],
             ),
-            child: Row(
+            child: const Row(
               children: [
-                const ShimmerBox(width: 48, height: 48, borderRadius: 24),
-                const SizedBox(width: 14),
+                ShimmerBox(width: 48, height: 48, borderRadius: 24),
+                SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       ShimmerBox(width: 140, height: 14, borderRadius: 6),
                       SizedBox(height: 8),
                       ShimmerBox(width: 200, height: 10, borderRadius: 6),
@@ -520,337 +913,136 @@ class _ChatListScreenState extends State<ChatListScreen>
   //  CONTACT CARD (card-based tile)
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildContactCard(Contact contact) {
-    return InteractiveCustomerCard(
-      contact: contact,
-      onTap: () {
-        Provider.of<AppState>(context, listen: false).selectContact(contact.id);
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => ChatDetailScreen(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 300),
-          ),
+    final appState = Provider.of<AppState>(context, listen: false);
+    final canReassign = appState.isCeo || appState.isManager;
+
+    return GestureDetector(
+      onLongPress: canReassign && contact.folder == 'customers'
+          ? () => _showReassignDialog(context, contact, appState)
+          : null,
+      child: InteractiveCustomerCard(
+        contact: contact,
+        onTap: () {
+          appState.selectContact(contact.id);
+          Navigator.push(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const ChatDetailScreen(),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 300),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showReassignDialog(BuildContext context, Contact customer, AppState appState) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can reassign targets.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+    final staff = appState.contacts.where((c) => c.folder == 'staff').toList();
+    String? selectedStaffId = customer.assignedStaffId;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                "Reassign ${customer.name}",
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Select a team member to assign this customer to:",
+                    style: TextStyle(color: AppColors.textLight, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.deepSpaceBlack.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.borderLight),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedStaffId ?? '',
+                        dropdownColor: AppColors.surface,
+                        isExpanded: true,
+                        icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        items: [
+                          const DropdownMenuItem<String>(value: '', child: Text("Unassigned")),
+                          ...staff.map((s) => DropdownMenuItem<String>(value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedStaffId = val;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel", style: TextStyle(color: AppColors.textLight)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final staffId = (selectedStaffId != null && selectedStaffId!.isNotEmpty) ? selectedStaffId : null;
+                    await appState.reassignCustomer(contactId: customer.id, newStaffId: staffId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Successfully reassigned ${customer.name}"),
+                          backgroundColor: AppColors.primaryDark,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text("Reassign", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildUnreadBadge(int count) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Pulsing orange glow behind
-        PulsingDot(color: AppColors.orangeGlow, size: 22),
-        // Count text on top
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            gradient: AppColors.orangeGradient,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.secondary.withValues(alpha: 0.4),
-                blurRadius: 8,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              '$count',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Product Sans',
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   //  AVATAR
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  Widget _buildAvatar(Contact contact) {
-    if (contact.avatar.isEmpty) {
-      return Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: AppColors.primaryGradient,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(Icons.psychology, color: Colors.white, size: 24),
-      );
-    }
-
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        image: DecorationImage(
-          image: NetworkImage(contact.avatar),
-          fit: BoxFit.cover,
-        ),
-        border: Border.all(color: AppColors.border, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-    );
-  }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   //  PROFILE VIEW
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  Widget _buildProfileView(AppState appState) {
-    final profile = !appState.isAdmin
-        ? {
-            'name': 'Sarah Jenkins',
-            'role': 'Project Lead | Staff',
-            'avatar': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'
-          }
-        : (appState.userProfile ?? {
-            'name': 'Marcus Sterling',
-            'role': 'Executive VP | Global EB Tech',
-            'avatar': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
-          });
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(0),
-      child: Column(
-        children: [
-          // â”€â”€â”€ Gradient profile header â”€â”€â”€
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 32, bottom: 28),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primaryDark.withValues(alpha: 0.08),
-                  AppColors.tealGlow.withValues(alpha: 0.04),
-                  AppColors.background,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-            child: Column(
-              children: [
-                // Avatar with gradient ring
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppColors.primaryGradient,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: 52,
-                    backgroundImage: NetworkImage(profile['avatar']!),
-                    backgroundColor: AppColors.surface,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Name with gradient overlay effect
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primary.withValues(alpha: 0.06),
-                        Colors.transparent,
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                  ),
-                  child: Text(
-                    profile['name']!,
-                    style: const TextStyle(
-                      color: AppColors.textMain,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Product Sans',
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  profile['role']!,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 13,
-                    fontFamily: 'Product Sans',
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // â”€â”€â”€ Settings card â”€â”€â”€
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 480),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.borderLight),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 18,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  _buildSettingRow(Icons.security_rounded, "Security Settings"),
-                  const Divider(color: AppColors.borderLight),
-                  _buildSettingRow(Icons.notifications_active_rounded, "Notification Filters"),
-                  const Divider(color: AppColors.borderLight),
-                  _buildSettingRow(Icons.color_lens_rounded, "Accent Preferences"),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // â”€â”€â”€ Developer Settings card â”€â”€â”€
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 480),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.borderLight),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 18,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Developer Settings",
-                    style: TextStyle(
-                      color: AppColors.textMain,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Product Sans',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Admin Mode",
-                        style: TextStyle(
-                          color: AppColors.textMain,
-                          fontSize: 14,
-                          fontFamily: 'Product Sans',
-                        ),
-                      ),
-                      Switch(
-                        value: appState.isAdmin,
-                        onChanged: (val) {
-                          appState.toggleAdminMode();
-                        },
-                        activeColor: AppColors.primary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    appState.isAdmin 
-                        ? "Current Role: Admin (Marcus Sterling)" 
-                        : "Current Role: Staff (Sarah Jenkins)",
-                    style: TextStyle(
-                      color: appState.isAdmin ? AppColors.primary : AppColors.textMuted,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      fontFamily: 'Product Sans',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingRow(IconData icon, String title) {
-    return TapScaleWidget(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10.0),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: AppColors.primary.withValues(alpha: 0.08),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 18),
-            ),
-            const SizedBox(width: 14),
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.textMain,
-                fontSize: 14,
-                fontFamily: 'Product Sans',
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-            const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textLight, size: 12),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildSortChip(String label, bool isSelected, VoidCallback onTap) {
     return GestureDetector(
@@ -896,9 +1088,10 @@ class _ChatListScreenState extends State<ChatListScreen>
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
     }
+    final bool isCeoOrManager = appState.canCreateAccounts;
     return Column(
       children: [
-        if (appState.isAdmin)
+        if (isCeoOrManager)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Row(
@@ -949,6 +1142,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                       staff: staff,
                       assignedCustomers: assignedCustomers,
                       isExpanded: isExpanded,
+                      canManage: isCeoOrManager,
                       onToggle: () {
                         setState(() {
                           _expandedStaffId = isExpanded ? null : staff.id;
@@ -957,7 +1151,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                       onAddCustomer: () => _showAddCustomerDialog(context, appState, staff.id),
                       onDelete: () => _showDeleteStaffDialog(context, appState, staff),
                       onRemoveCustomer: (customer) => _showRemoveCustomerDialog(context, appState, customer),
-                      onReassignCustomer: (customer) => _showReassignDialog(context, appState, customer),
+                      onReassignCustomer: (customer) => _showReassignDialog(context, customer, appState),
                     );
                   },
                 ),
@@ -967,6 +1161,15 @@ class _ChatListScreenState extends State<ChatListScreen>
   }
 
   void _showAddCustomerDialog(BuildContext context, AppState appState, String staffId) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can assign targets.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
     String searchQuery = '';
     List<String> selectedCustomerIds = [];
 
@@ -1032,10 +1235,26 @@ class _ChatListScreenState extends State<ChatListScreen>
                                 activeColor: AppColors.primary,
                                 title: Text(customer.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textMain)),
                                 subtitle: Text(customer.phone, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                                secondary: CircleAvatar(
-                                  backgroundImage: customer.avatar.isNotEmpty ? NetworkImage(customer.avatar) : null,
-                                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                                  child: customer.avatar.isEmpty ? const Icon(Icons.person, color: AppColors.primary) : null,
+                                secondary: SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: customer.avatar.isNotEmpty
+                                      ? ClipOval(
+                                          child: Image.network(
+                                            customer.avatar,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Container(
+                                                color: AppColors.primary.withValues(alpha: 0.1),
+                                                child: const Icon(Icons.person, color: AppColors.primary),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : CircleAvatar(
+                                          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                                          child: const Icon(Icons.person, color: AppColors.primary),
+                                        ),
                                 ),
                                 onChanged: (bool? value) {
                                   setModalState(() {
@@ -1086,14 +1305,17 @@ class _ChatListScreenState extends State<ChatListScreen>
     );
   }
 
-  Color _parseColor(String hex) {
-    hex = hex.replaceAll('#', '');
-    if (hex.length == 6) {
-      hex = 'FF$hex';
+
+  void _showCreateStaffDialog(BuildContext context, AppState appState) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can create vaults.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
     }
-    return Color(int.parse(hex, radix: 16));
-  }
-    void _showCreateStaffDialog(BuildContext context, AppState appState) {
     String staffName = '';
     showDialog(
       context: context,
@@ -1114,17 +1336,6 @@ class _ChatListScreenState extends State<ChatListScreen>
             ElevatedButton(
               onPressed: () {
                 if (staffName.isNotEmpty) {
-                  final newStaff = Contact(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    name: staffName,
-                    phone: '',
-                    role: 'Staff',
-                    avatar: '',
-                    status: 'online',
-                    folder: 'staff',
-                    unreadCount: 0,
-                    tags: [],
-                  );
                   appState.addStaffFolder(staffName, '', 'Staff');
                 }
                 Navigator.pop(context);
@@ -1138,6 +1349,15 @@ class _ChatListScreenState extends State<ChatListScreen>
   }
 
   void _showDeleteStaffDialog(BuildContext context, AppState appState, Contact staff) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can delete vaults.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) {
@@ -1165,6 +1385,15 @@ class _ChatListScreenState extends State<ChatListScreen>
   }
 
   void _showRemoveCustomerDialog(BuildContext context, AppState appState, Contact customer) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can modify vault assignments.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) {
@@ -1191,12 +1420,17 @@ class _ChatListScreenState extends State<ChatListScreen>
     );
   }
 
-  void _showReassignDialog(BuildContext context, AppState appState, Contact customer) {
-    // Basic reassign stub
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reassign feature not fully implemented in Gamified mode.')));
-  }
 
   void _showAddContactDialog(BuildContext context, AppState appState) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can add contacts.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final emailController = TextEditingController();
@@ -1553,6 +1787,65 @@ class _ChatListScreenState extends State<ChatListScreen>
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  void _showNewActionSheet(BuildContext context, AppState appState) {
+    if (!appState.canCreateAccounts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access restricted: Only CEO and Manager can access this action.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.15), shape: BoxShape.circle), child: const Icon(Icons.person_add_rounded, color: AppColors.primary)),
+                title: const Text('New Contact / Chat', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Start direct conversation with a contact', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddContactDialog(context, appState);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withOpacity(0.15), shape: BoxShape.circle), child: const Icon(Icons.group_add_rounded, color: Colors.purpleAccent)),
+                title: const Text('New Group', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Create a team or project group discussion', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GroupCreateScreen()));
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.15), shape: BoxShape.circle), child: const Icon(Icons.lock_rounded, color: Colors.pinkAccent)),
+                title: const Text('Lock App Security', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Enable Passcode / Biometric Security Lock', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  appState.setAppLocked(true);
+                },
+              ),
+            ],
+          ),
         );
       },
     );

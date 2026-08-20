@@ -1,4 +1,7 @@
 import 'dart:math';
+import 'dart:convert';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,9 +10,12 @@ import '../theme/colors.dart';
 import '../models/chat_models.dart';
 import '../widgets/animations.dart';
 import '../utils/error_handler.dart';
+import '../services/api_service.dart';
+import '../widgets/titan_glass_panel.dart';
+import '../widgets/titan_background.dart';
 
 class BroadcastScreen extends StatefulWidget {
-  const BroadcastScreen({Key? key}) : super(key: key);
+  const BroadcastScreen({super.key});
 
   @override
   State<BroadcastScreen> createState() => _BroadcastScreenState();
@@ -123,24 +129,81 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
       _uploadProgress = 0.0;
     });
 
-    // Simulate progress if there is a file
+    String finalPayload = text;
+    String? displaySizeStr;
+
     if (_selectedFile != null) {
-      for (int i = 1; i <= 10; i++) {
+      List<int>? fileBytes = _selectedFile!.bytes;
+      if (fileBytes == null && !kIsWeb && _selectedFile!.path != null) {
+        try {
+          fileBytes = await io.File(_selectedFile!.path!).readAsBytes();
+        } catch (e) {
+          debugPrint("Error reading file: $e");
+        }
+      }
+
+      if (fileBytes == null) {
+        ErrorHandler.showError("Failed to read file contents.");
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        return;
+      }
+
+      // Start upload in parallel
+      bool uploadComplete = false;
+      final uploadFuture = ApiService.uploadFile(fileBytes, _selectedFile!.name);
+      uploadFuture.then((_) {
+        uploadComplete = true;
+      }).catchError((_) {
+        uploadComplete = true;
+      });
+
+      // Simulated progress increments while HTTP upload in progress
+      for (int i = 1; i <= 9; i++) {
+        if (uploadComplete) break;
         await Future.delayed(const Duration(milliseconds: 150));
         if (!mounted) return;
         setState(() {
           _uploadProgress = i / 10.0;
         });
       }
+
+      final uploadedUrl = await uploadFuture;
+      uploadComplete = true;
+
+      if (uploadedUrl == null) {
+        ErrorHandler.showError("Failed to upload file to storage server.");
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        return;
+      }
+
+      setState(() {
+        _uploadProgress = 1.0;
+      });
+
+      String ext = _selectedFile!.extension?.toUpperCase() ?? "FILE";
+      String formattedSize = _formatFileSize(_selectedFile!.size);
+      displaySizeStr = "$formattedSize • $ext";
+
+      finalPayload = jsonEncode({
+        'caption': text,
+        'url': uploadedUrl,
+      });
     }
 
+    if (!mounted) return;
     final appState = Provider.of<AppState>(context, listen: false);
     final success = await appState.sendBroadcastMessage(
       _selectedContactIds,
-      text,
+      finalPayload,
       isFile: _selectedFile != null,
       fileName: _selectedFile?.name,
-      fileSize: _selectedFile != null ? _formatFileSize(_selectedFile!.size) : null,
+      fileSize: displaySizeStr,
     );
 
     setState(() {
@@ -149,9 +212,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
     });
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Broadcast sent to ${_selectedContactIds.length} recipients successfully!")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Broadcast sent to ${_selectedContactIds.length} recipients successfully!")),
+        );
+      }
       setState(() {
         _selectedContactIds.clear();
         _selectedListId = null;
@@ -202,11 +267,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                     const SizedBox(height: 14),
                     TextField(
                       style: const TextStyle(color: Colors.white, fontSize: 12),
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         hintText: "Search contacts...",
-                        hintStyle: const TextStyle(color: AppColors.textLight),
-                        prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.textLight),
-                        contentPadding: const EdgeInsets.all(8),
+                        hintStyle: TextStyle(color: AppColors.textLight),
+                        prefixIcon: Icon(Icons.search, size: 16, color: AppColors.textLight),
+                        contentPadding: EdgeInsets.all(8),
                         filled: true,
                         fillColor: AppColors.background,
                       ),
@@ -290,9 +355,29 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
+          onPressed: () => Navigator.of(context).pop(),
+          tooltip: 'Back to Chats',
+        ),
+        title: const Text(
+          "Broadcast Hub",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Product Sans',
+            fontSize: 18,
+          ),
+        ),
+      ),
+      body: TitanBackground(
+        preset: 'command',
+        child: SafeArea(
+          child: Column(
+            children: [
             // ── Header Banner ──
             _buildHeaderBanner(),
 
@@ -313,53 +398,38 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
           ],
         ),
       ),
+     ),
     );
   }
 
   Widget _buildHeaderBanner() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
       decoration: const BoxDecoration(
         gradient: AppColors.headerGradient,
       ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
             ),
             child: const Icon(Icons.campaign_rounded, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Broadcast Hub",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Product Sans',
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  "Transmit secure announcements to multiple client folders concurrently.",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 11.5,
-                    fontFamily: 'Product Sans',
-                  ),
-                ),
-              ],
+            child: Text(
+              "Transmit secure announcements to multiple client folders concurrently.",
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 12,
+                fontFamily: 'Product Sans',
+              ),
             ),
           ),
         ],
@@ -406,9 +476,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
             margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.08),
+              color: AppColors.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -469,17 +539,33 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isChecked ? AppColors.primary.withOpacity(0.04) : AppColors.surface,
+                            color: isChecked ? AppColors.primary.withValues(alpha: 0.04) : AppColors.surface,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: isChecked ? AppColors.primary : AppColors.border, width: isChecked ? 1.5 : 1),
                           ),
                           child: Row(
                             children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundImage: c.avatar.isNotEmpty ? NetworkImage(c.avatar) : null,
-                                backgroundColor: AppColors.primary.withOpacity(0.1),
-                                child: c.avatar.isEmpty ? const Icon(Icons.person, color: AppColors.primary, size: 18) : null,
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: c.avatar.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          c.avatar,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: AppColors.primary.withValues(alpha: 0.1),
+                                              child: const Icon(Icons.person, color: AppColors.primary, size: 18),
+                                            );
+                                          },
+                                        ),
+                                      )
+                                    : CircleAvatar(
+                                        radius: 18,
+                                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                                        child: const Icon(Icons.person, color: AppColors.primary, size: 18),
+                                      ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -555,7 +641,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
         // Text input & transmit composer bar
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.surface,
             border: Border(top: BorderSide(color: AppColors.borderLight)),
           ),
@@ -601,7 +687,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.orangeGlow.withOpacity(0.3),
+                        color: AppColors.orangeGlow.withValues(alpha: 0.3),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       ),
@@ -680,21 +766,17 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                   itemCount: lists.length,
                   itemBuilder: (context, index) {
                     final list = lists[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10.0),
+                      child: TitanGlassPanel(
+                        glowColor: AppColors.tealGlow,
+                        child: Row(
+                          children: [
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppColors.primary.withOpacity(0.08),
+                              color: AppColors.primary.withValues(alpha: 0.08),
                             ),
                             child: const Icon(Icons.people_alt_rounded, color: AppColors.primary, size: 20),
                           ),
@@ -753,6 +835,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                           ),
                         ],
                       ),
+                     ),
                     );
                   },
                 ),
@@ -776,7 +859,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_rounded, size: 48, color: AppColors.textLight.withOpacity(0.5)),
+            Icon(Icons.history_rounded, size: 48, color: AppColors.textLight.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
             const Text(
               "No Transmissions Logged",
@@ -792,17 +875,13 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
       itemCount: history.length,
       itemBuilder: (context, index) {
         final item = history[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: TitanGlassPanel(
+            glowColor: AppColors.tealGlow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               // Header logs details
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -814,9 +893,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.12),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                     ),
                     child: Text(
                       "${item.deliveredCount}/${item.recipientCount} Sent",
@@ -870,6 +949,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> with SingleTickerProv
               ),
             ],
           ),
+         ),
         );
       },
     );

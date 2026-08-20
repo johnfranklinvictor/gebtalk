@@ -1,5 +1,7 @@
-import 'dart:html' as html;
+import 'package:flutter/foundation.dart';
+import 'package:web/web.dart' as web;
 import 'dart:async';
+import 'dart:js_interop';
 
 Future<void> downloadFileImpl(String url, String fileName) async {
   // Convert view URL (/uploads/...) to download URL (/api/download/...) 
@@ -10,35 +12,45 @@ Future<void> downloadFileImpl(String url, String fileName) async {
   }
 
   try {
-    // Method 1: Use XHR to fetch as blob, then trigger download via blob URL
-    final xhr = await html.HttpRequest.request(
-      downloadUrl,
-      method: 'GET',
-      responseType: 'blob',
-    );
-    final blob = xhr.response as html.Blob;
-    final blobUrl = html.Url.createObjectUrlFromBlob(blob);
+    // Method 1: Use XMLHttpRequest to fetch as blob, then trigger download via blob URL
+    final xhr = web.XMLHttpRequest();
+    xhr.open('GET', downloadUrl);
+    xhr.responseType = 'blob';
     
-    final anchor = html.AnchorElement(href: blobUrl)
-      ..setAttribute('download', fileName)
-      ..style.display = 'none';
+    final completer = Completer<void>();
+    xhr.onload = ((web.Event e) {
+      completer.complete();
+    }).toJS;
+    xhr.onerror = ((web.Event e) {
+      completer.completeError('XHR failed');
+    }).toJS;
+    xhr.send();
+    await completer.future;
+    
+    final blob = xhr.response as web.Blob;
+    final blobUrl = web.URL.createObjectURL(blob);
+    
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    anchor.href = blobUrl;
+    anchor.setAttribute('download', fileName);
+    anchor.style.display = 'none';
       
-    html.document.body?.children.add(anchor);
+    web.document.body?.appendChild(anchor);
     anchor.click();
     anchor.remove();
     
     // Revoke the URL after download starts
     Future.delayed(const Duration(seconds: 10), () {
-      html.Url.revokeObjectUrl(blobUrl);
+      web.URL.revokeObjectURL(blobUrl);
     });
   } catch (e) {
-    print("Blob download failed, falling back to direct link: $e");
+    debugPrint("Blob download failed, falling back to direct link: $e");
     // Method 2: Fallback - use window.open to the download endpoint
     // This forces the browser to download via Content-Disposition: attachment
-    html.window.open(downloadUrl, '_blank');
+    web.window.open(downloadUrl, '_blank');
   }
 }
 
 void openFileInNewTabImpl(String url) {
-  html.window.open(url, '_blank');
+  web.window.open(url, '_blank');
 }

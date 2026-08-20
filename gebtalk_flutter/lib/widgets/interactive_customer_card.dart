@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/colors.dart';
@@ -8,7 +7,7 @@ class InteractiveCustomerCard extends StatefulWidget {
   final Contact contact;
   final VoidCallback onTap;
 
-  const InteractiveCustomerCard({Key? key, required this.contact, required this.onTap}) : super(key: key);
+  const InteractiveCustomerCard({super.key, required this.contact, required this.onTap});
 
   @override
   State<InteractiveCustomerCard> createState() => _InteractiveCustomerCardState();
@@ -81,7 +80,7 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
           const SizedBox(width: 4),
         ],
         if (icon != null) ...[
-          Icon(icon, size: 13, color: iconColor.withOpacity(0.85)),
+          Icon(icon, size: 13, color: iconColor.withValues(alpha: 0.85)),
           const SizedBox(width: 4),
         ],
         Expanded(
@@ -98,7 +97,7 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                 TextSpan(
                   text: prefix,
                   style: TextStyle(
-                    color: msg.isAudio || msg.isFile ? Colors.white.withOpacity(0.85) : AppColors.textMuted,
+                    color: msg.isAudio || msg.isFile ? Colors.white.withValues(alpha: 0.85) : AppColors.textMuted,
                     fontWeight: msg.isAudio || msg.isFile ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
@@ -118,10 +117,14 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
 
     return MouseRegion(
       onEnter: (_) { if (mounted) setState(() => _isHovered = true); },
-      onExit: (_) { if (mounted) setState(() {
-        _isHovered = false;
-        _mousePosition = Offset.zero;
-      }); },
+      onExit: (_) {
+        if (mounted) {
+          setState(() {
+            _isHovered = false;
+            _mousePosition = Offset.zero;
+          });
+        }
+      },
       onHover: (details) {
         if (_isHovered && mounted) {
           setState(() {
@@ -138,7 +141,7 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
             double y = 0;
             if (_isHovered) {
               double centerX = constraints.maxWidth / 2;
-              final centerY = 45.0; // Approx half height
+              const centerY = 45.0; // Approx half height
               // Max rotation of 10 degrees (0.17 radians)
               if (centerX > 0 && centerX.isFinite && centerY > 0) {
                 x = ((_mousePosition.dy - centerY) / centerY) * -0.15;
@@ -155,7 +158,11 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                   ..setEntry(3, 2, 0.001) // perspective
                   ..rotateX(x * hoverValue)
                   ..rotateY(y * hoverValue)
-                  ..scale(1.0 + (0.02 * hoverValue));
+                  ..scale(
+                    1.0 + (0.02 * hoverValue),
+                    1.0 + (0.02 * hoverValue),
+                    1.0 + (0.02 * hoverValue),
+                  );
 
                 return Transform(
                   transform: transform,
@@ -171,8 +178,8 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                       ),
                       boxShadow: [
                         if (_isHovered)
-                          BoxShadow(color: AppColors.primary.withOpacity(0.3 * hoverValue), blurRadius: 20, spreadRadius: 2),
-                        BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5)),
+                          BoxShadow(color: AppColors.primary.withValues(alpha: 0.3 * hoverValue), blurRadius: 20, spreadRadius: 2),
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 10, offset: const Offset(0, 5)),
                       ],
                     ),
                     child: Padding(
@@ -186,19 +193,36 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(color: widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip') ? AppColors.secondary : AppColors.primary, width: 2),
-                              image: widget.contact.avatar.isNotEmpty
-                                  ? DecorationImage(image: NetworkImage(widget.contact.avatar), fit: BoxFit.cover)
-                                  : null,
                               boxShadow: [
                                 if (widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip'))
-                                  BoxShadow(color: AppColors.secondary.withOpacity(0.5), blurRadius: 8)
+                                  BoxShadow(color: AppColors.secondary.withValues(alpha: 0.5), blurRadius: 8)
                                 else
-                                  BoxShadow(color: AppColors.primary.withOpacity(0.5), blurRadius: 8)
+                                  BoxShadow(color: AppColors.primary.withValues(alpha: 0.5), blurRadius: 8)
                               ],
                             ),
-                            child: widget.contact.avatar.isEmpty
-                                ? Icon(Icons.person, color: widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip') ? AppColors.secondary : AppColors.primary)
-                                : null,
+                            child: widget.contact.avatar.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.network(
+                                      widget.contact.avatar,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Center(
+                                          child: Icon(
+                                            Icons.person,
+                                            color: widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip')
+                                                ? AppColors.secondary
+                                                : AppColors.primary,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.person,
+                                    color: widget.contact.tags.any((t) => t.name.toLowerCase() == 'high priority' || t.name.toLowerCase() == 'vip')
+                                        ? AppColors.secondary
+                                        : AppColors.primary,
+                                  ),
                           ),
                           const SizedBox(width: 16),
                           
@@ -246,7 +270,7 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    Icon(Icons.local_fire_department, color: AppColors.orangeGlow, size: 12),
+                                    const Icon(Icons.local_fire_department, color: AppColors.orangeGlow, size: 12),
                                     const SizedBox(width: 4),
                                     Text("Activity: $activityScore/100", style: const TextStyle(color: AppColors.orangeGlow, fontSize: 10, fontWeight: FontWeight.bold)),
                                   ],
@@ -262,7 +286,7 @@ class _InteractiveCustomerCardState extends State<InteractiveCustomerCard> {
                               decoration: BoxDecoration(
                                 color: AppColors.deepIndigo,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                               ),
                               child: Text(
                                 widget.contact.tags.first.name.toUpperCase(),

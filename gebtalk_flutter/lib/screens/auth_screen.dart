@@ -7,10 +7,8 @@ import '../providers/app_state.dart';
 import '../widgets/ebi_bot.dart';
 import '../widgets/animations.dart';
 import '../theme/colors.dart';
-import 'chat_list_screen.dart';
 import 'home_screen.dart';
 import '../services/api_service.dart';
-import '../utils/countries.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({Key? key}) : super(key: key);
@@ -20,13 +18,10 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
-  Country _selectedCountry = Countries.list[0]; // Sri Lanka as default
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final List<TextEditingController> _otpControllers = List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> _otpFocusNodes = List.generate(4, (_) => FocusNode());
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
-  bool _otpSent = false;
+  bool _obscurePassword = true;
   bool _isCelebrating = false;
   String _errorMessage = '';
 
@@ -41,9 +36,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   late Animation<double> _logoScale;
   late Animation<double> _logoOpacity;
   late Animation<double> _celebrationScale;
-
-  // OTP digit scale animations (one per box)
-  final List<double> _otpScales = [1.0, 1.0, 1.0, 1.0];
 
   @override
   void initState() {
@@ -103,14 +95,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    for (var c in _otpControllers) {
-      c.dispose();
-    }
-    for (var f in _otpFocusNodes) {
-      f.dispose();
-    }
+    _usernameController.dispose();
+    _passwordController.dispose();
     _bgController.dispose();
     _floatController1.dispose();
     _floatController2.dispose();
@@ -120,204 +106,133 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // ----- Business logic (unchanged) -----
+  // ----- Business logic -----
 
-  void _sendOtpCode() async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
+  void _loginWithCredentials() async {
+    final identifier = _usernameController.text.trim();
+    if (identifier.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter your full name';
+        _errorMessage = 'PLEASE ENTER USERNAME OR EMAIL';
       });
       return;
     }
 
-    final phoneNum = _phoneController.text.trim();
-    if (phoneNum.isEmpty) {
+    final password = _passwordController.text.trim();
+    if (password.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter your phone number';
+        _errorMessage = 'PLEASE ENTER PASSWORD';
       });
       return;
     }
-
-    final digits = phoneNum.replaceAll(RegExp(r'\D'), '');
-    if (!RegExp(_selectedCountry.regexPattern).hasMatch(digits)) {
-      setState(() {
-        _errorMessage = 'Invalid format for ${_selectedCountry.name}';
-      });
-      return;
-    }
-
-    final fullPhone = '${_selectedCountry.code} $phoneNum';
-
-    final appState = Provider.of<AppState>(context, listen: false);
-    appState.setPhoneNumber(fullPhone);
 
     setState(() {
       _errorMessage = '';
     });
 
-    // Try sending OTP via API, proceed to verification screen in any case
-    await ApiService.sendOtp(fullPhone);
-    setState(() {
-      _otpSent = true;
-    });
-  }
-
-  void _verifyOtpCode() async {
-    String otp = _otpControllers.map((c) => c.text).join();
-    if (otp.length < 4) {
-      setState(() {
-        _errorMessage = 'Please enter the 4-digit code';
-      });
-      return;
-    }
-
     final appState = Provider.of<AppState>(context, listen: false);
-    final success = await appState.verifyOtpCode(
-      otp,
-      name: _nameController.text.trim(),
-      countryCode: _selectedCountry.code,
-      countryName: _selectedCountry.name,
-      countryFlag: _selectedCountry.flag,
-    );
+    final success = await appState.loginWithEmail(identifier, password);
 
     if (success) {
-      // Trigger EBI Celebration Overlay
-      setState(() {
-        _isCelebrating = true;
-        _errorMessage = '';
-      });
-      _celebrationController.forward();
-
-      // Automatically redirect to Home screen after 2 seconds
-      await Future.delayed(const Duration(milliseconds: 2200));
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 600),
-          ),
-        );
+        setState(() {
+          _isCelebrating = true;
+        });
+        _celebrationController.forward();
+
+        Future.delayed(const Duration(milliseconds: 1400), () {
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        });
       }
     } else {
       setState(() {
-        _errorMessage = 'Invalid validation code. Try again!';
+        _errorMessage = 'INVALID USERNAME OR PASSWORD';
       });
     }
-  }
-
-  // Animate an OTP box when user types a digit
-  void _animateOtpBox(int index) {
-    setState(() => _otpScales[index] = 1.18);
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) setState(() => _otpScales[index] = 1.0);
-    });
   }
 
   void _showServerSettingsDialog() {
     final TextEditingController urlController = TextEditingController(text: ApiService.baseUrl);
+
     showDialog(
       context: context,
       builder: (context) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: AlertDialog(
-            backgroundColor: AppColors.midnightNavy.withValues(alpha: 0.8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
-            title: const Row(
-              children: [
-                Icon(Icons.dns_rounded, color: AppColors.primary),
-                SizedBox(width: 10),
-                Text(
-                  'SERVER_SETTINGS',
-                  style: TextStyle(
-                    fontFamily: 'ProductSans',
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                    fontSize: 18,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'API BASE URL:',
-                  style: TextStyle(
-                    color: AppColors.primaryLight,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: urlController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'http://10.0.2.2:5000/api',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                    filled: true,
-                    fillColor: AppColors.deepSpaceBlack.withValues(alpha: 0.5),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '• Emulator: http://10.0.2.2:5000/api\n'
-                  '• Local PC: http://127.0.0.1:5000/api\n'
-                  '• Physical Phone: Use host IP (e.g. http://192.168.1.X:5000/api)',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.5),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('CANCEL', style: TextStyle(color: AppColors.textMuted)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.deepSpaceBlack,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () {
-                  String newUrl = urlController.text.trim();
-                  if (newUrl.isNotEmpty) {
-                    setState(() {
-                      ApiService.baseUrl = newUrl;
-                    });
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('API base URL updated to: $newUrl'),
-                        backgroundColor: AppColors.electricBlue,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
+        return AlertDialog(
+          backgroundColor: AppColors.midnightNavy.withValues(alpha: 0.95),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3), width: 1.5),
+          ),
+          title: Row(
+            children: const [
+              Icon(Icons.settings_suggest_rounded, color: AppColors.primary),
+              SizedBox(width: 10),
+              Text(
+                'Server Connection',
+                style: TextStyle(color: Colors.white, fontFamily: 'ProductSans', fontSize: 18),
               ),
             ],
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Backend API Server URL',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.deepSpaceBlack.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.electricBlue.withValues(alpha: 0.3)),
+                ),
+                child: TextField(
+                  controller: urlController,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: InputBorder.none,
+                    hintText: 'http://127.0.0.1:5000/api',
+                    hintStyle: TextStyle(color: Colors.white24),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCEL', style: TextStyle(color: AppColors.textMuted)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.deepSpaceBlack,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                String newUrl = urlController.text.trim();
+                if (newUrl.isNotEmpty) {
+                  setState(() {
+                    ApiService.baseUrl = newUrl;
+                  });
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('API base URL updated to: $newUrl'),
+                      backgroundColor: AppColors.electricBlue,
+                    ),
+                  );
+                }
+              },
+              child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
         );
       },
     );
@@ -364,21 +279,27 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                       controller: _floatController1,
                       baseX: MediaQuery.of(context).size.width * 0.2,
                       baseY: MediaQuery.of(context).size.height * 0.3,
-                      radiusX: 60, radiusY: 40, size: 200,
+                      radiusX: 60,
+                      radiusY: 40,
+                      size: 200,
                       color: AppColors.electricBlue.withOpacity(0.15),
                     ),
                     _buildFloatingCircle(
                       controller: _floatController2,
                       baseX: MediaQuery.of(context).size.width * 0.8,
                       baseY: MediaQuery.of(context).size.height * 0.6,
-                      radiusX: 80, radiusY: 100, size: 300,
+                      radiusX: 80,
+                      radiusY: 100,
+                      size: 300,
                       color: AppColors.darkTeal.withOpacity(0.15),
                     ),
                     _buildFloatingCircle(
                       controller: _floatController3,
                       baseX: MediaQuery.of(context).size.width * 0.5,
                       baseY: MediaQuery.of(context).size.height * 0.8,
-                      radiusX: 50, radiusY: 70, size: 150,
+                      radiusX: 50,
+                      radiusY: 70,
+                      size: 150,
                       color: AppColors.primary.withOpacity(0.1),
                     ),
                   ],
@@ -432,7 +353,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// The glassmorphic card that holds all inputs
+  /// The glassmorphic card that holds inputs
   Widget _buildGlassCard(bool isLoading) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 32.0),
@@ -466,9 +387,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Title
-              Text(
-                _otpSent ? "SYSTEM_VERIFICATION" : "ACCESS_PORTAL",
-                style: const TextStyle(
+              const Text(
+                "ACCESS_PORTAL",
+                style: TextStyle(
                   color: AppColors.primary,
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
@@ -478,11 +399,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
-                _otpSent
-                    ? "ENTER 4-DIGIT SECURITY CLEARANCE SENT TO ${_phoneController.text}"
-                    : "ENTER CREDENTIALS TO INITIALIZE SECURE CONNECTION",
-                style: const TextStyle(
+              const Text(
+                "ENTER CREDENTIALS TO INITIALIZE SECURE CONNECTION",
+                style: TextStyle(
                   color: AppColors.textMuted,
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -493,13 +412,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 32),
 
-              if (!_otpSent) ...[
-                _buildNameInput(),
-                const SizedBox(height: 16),
-                _buildPhoneInput(),
-              ] else ...[
-                _buildOtpBoxes(),
-              ],
+              // 1. Username or Email Input
+              _buildUsernameInput(),
+              const SizedBox(height: 16),
+
+              // 2. Password Input
+              _buildPasswordInput(),
 
               if (_errorMessage.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -519,29 +437,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
               // CTA Button
               _buildCtaButton(isLoading),
-
-              if (_otpSent) ...[
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _otpSent = false;
-                      for (var c in _otpControllers) {
-                        c.clear();
-                      }
-                    });
-                  },
-                  child: const Text(
-                    "[ ABORT_VERIFICATION ]",
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -549,170 +444,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _showCountryPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final TextEditingController searchController = TextEditingController();
-            List<Country> filteredCountries = List.from(Countries.list);
-
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.75,
-              decoration: BoxDecoration(
-                color: AppColors.midnightNavy.withValues(alpha: 0.95),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(28),
-                  topRight: Radius.circular(28),
-                ),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  width: 1.5,
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(28),
-                  topRight: Radius.circular(28),
-                ),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Column(
-                    children: [
-                      // Pull bar
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 40,
-                        height: 4.5,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "SELECT COUNTRY CODE",
-                        style: TextStyle(
-                          fontFamily: 'ProductSans',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 1.5,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Search bar
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: TextField(
-                          controller: searchController,
-                          style: const TextStyle(color: Colors.white),
-                          onChanged: (val) {
-                            setModalState(() {
-                              filteredCountries = Countries.list.where((c) {
-                                final nameMatch = c.name.toLowerCase().contains(val.toLowerCase());
-                                final codeMatch = c.code.contains(val);
-                                return nameMatch || codeMatch;
-                              }).toList();
-                            });
-                          },
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
-                            hintText: "Search by country name or code...",
-                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                            filled: true,
-                            fillColor: AppColors.deepSpaceBlack.withValues(alpha: 0.5),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(color: AppColors.border),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      // List
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          itemCount: filteredCountries.length,
-                          itemBuilder: (context, index) {
-                            final c = filteredCountries[index];
-                            final isSelected = c.code == _selectedCountry.code && c.name == _selectedCountry.name;
-                            return InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _selectedCountry = c;
-                                  _errorMessage = '';
-                                  // Format current text under new rules
-                                  final formatted = Countries.formatNumber(_phoneController.text, c);
-                                  _phoneController.value = TextEditingValue(
-                                    text: formatted,
-                                    selection: TextSelection.collapsed(offset: formatted.length),
-                                  );
-                                });
-                                Navigator.pop(context);
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isSelected ? AppColors.primary.withValues(alpha: 0.3) : Colors.transparent,
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(c.flag, style: const TextStyle(fontSize: 22)),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        c.name,
-                                        style: TextStyle(
-                                          color: isSelected ? AppColors.primaryLight : Colors.white,
-                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      c.code,
-                                      style: TextStyle(
-                                        color: isSelected ? AppColors.primary : AppColors.textMuted,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Glassmorphic text input for full name
-  Widget _buildNameInput() {
+  /// Glassmorphic text input for Username or Email
+  Widget _buildUsernameInput() {
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
@@ -742,13 +475,13 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             ),
             Expanded(
               child: TextField(
-                controller: _nameController,
-                keyboardType: TextInputType.name,
+                controller: _usernameController,
+                keyboardType: TextInputType.emailAddress,
                 style: const TextStyle(
                   color: AppColors.primaryLight,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  letterSpacing: 1.0,
+                  letterSpacing: 0.8,
                 ),
                 onChanged: (value) {
                   if (_errorMessage.isNotEmpty) {
@@ -757,12 +490,13 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                     });
                   }
                 },
+                onSubmitted: (_) => _loginWithCredentials(),
                 decoration: InputDecoration(
-                  hintText: "Enter Full Name",
+                  hintText: "Enter Username or Email",
                   hintStyle: TextStyle(
                     color: AppColors.textMuted.withValues(alpha: 0.3),
                     fontWeight: FontWeight.w400,
-                    letterSpacing: 1.0,
+                    letterSpacing: 0.8,
                   ),
                   filled: false,
                   border: InputBorder.none,
@@ -778,8 +512,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Pill-shaped phone input with country selector and text field inside
-  Widget _buildPhoneInput() {
+  /// Glassmorphic text input for Password
+  Widget _buildPasswordInput() {
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
@@ -798,78 +532,57 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         ),
         child: Row(
           children: [
-            // Country flag & code dropdown button
-            InkWell(
-              onTap: _showCountryPicker,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_selectedCountry.flag, style: const TextStyle(fontSize: 20)),
-                    const SizedBox(width: 8),
-                    Text(
-                      _selectedCountry.code,
-                      style: const TextStyle(
-                        color: AppColors.primaryLight,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.arrow_drop_down_rounded, color: AppColors.primary, size: 18),
-                  ],
-                ),
-              ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Icon(Icons.lock_rounded, color: AppColors.primary, size: 20),
             ),
             Container(
               width: 1,
               height: 32,
               color: AppColors.borderLight.withValues(alpha: 0.3),
             ),
-            // Phone Number Input
             Expanded(
               child: TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
+                controller: _passwordController,
+                obscureText: _obscurePassword,
                 style: const TextStyle(
                   color: AppColors.primaryLight,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  letterSpacing: 1.5,
+                  letterSpacing: 1.2,
                 ),
                 onChanged: (value) {
-                  final formatted = Countries.formatNumber(value, _selectedCountry);
-                  if (formatted != value) {
-                    _phoneController.value = TextEditingValue(
-                      text: formatted,
-                      selection: TextSelection.collapsed(offset: formatted.length),
-                    );
-                  }
-                  // Clear error messages as user corrects input
                   if (_errorMessage.isNotEmpty) {
                     setState(() {
                       _errorMessage = '';
                     });
                   }
                 },
+                onSubmitted: (_) => _loginWithCredentials(),
                 decoration: InputDecoration(
-                  hintText: _selectedCountry.formatPlaceholder,
+                  hintText: "Enter Password",
                   hintStyle: TextStyle(
                     color: AppColors.textMuted.withValues(alpha: 0.3),
                     fontWeight: FontWeight.w400,
-                    letterSpacing: 1.5,
+                    letterSpacing: 0.8,
                   ),
                   filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      color: AppColors.primary.withValues(alpha: 0.6),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                  ),
                 ),
               ),
             ),
@@ -879,83 +592,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Animated OTP digit boxes
-  Widget _buildOtpBoxes() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: List.generate(4, (index) {
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 1.0, end: _otpScales[index]),
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutBack,
-          builder: (context, scale, child) {
-            return Transform.scale(
-              scale: scale,
-              child: Container(
-                width: 55,
-                height: 65,
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: _otpFocusNodes[index].hasFocus ? 0.3 : 0.05),
-                      blurRadius: _otpFocusNodes[index].hasFocus ? 20 : 5,
-                      spreadRadius: _otpFocusNodes[index].hasFocus ? 2 : 0,
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  controller: _otpControllers[index],
-                  focusNode: _otpFocusNodes[index],
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  maxLength: 1,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryLight,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: "",
-                    filled: true,
-                    fillColor: AppColors.deepSpaceBlack.withValues(alpha: 0.6),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: AppColors.electricBlue.withValues(alpha: 0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: AppColors.primary,
-                        width: 2.0,
-                      ),
-                    ),
-                  ),
-                  onChanged: (val) {
-                    if (val.isNotEmpty) {
-                      _animateOtpBox(index);
-                      if (index < 3) {
-                        FocusScope.of(context).requestFocus(_otpFocusNodes[index + 1]);
-                      } else {
-                        FocusScope.of(context).unfocus();
-                        _verifyOtpCode();
-                      }
-                    } else if (val.isEmpty && index > 0) {
-                      FocusScope.of(context).requestFocus(_otpFocusNodes[index - 1]);
-                    }
-                  },
-                ),
-              ),
-            );
-          },
-        );
-      }),
-    );
-  }
-
-  /// Call to action button
+  /// Call to action button (CONNECT >)
   Widget _buildCtaButton(bool isLoading) {
     return StatefulBuilder(
       builder: (context, setStateLocal) {
@@ -964,7 +601,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           onEnter: (_) => setStateLocal(() => isHovered = true),
           onExit: (_) => setStateLocal(() => isHovered = false),
           child: GestureDetector(
-            onTap: isLoading ? null : (_otpSent ? _verifyOtpCode : _sendOtpCode),
+            onTap: isLoading ? null : _loginWithCredentials,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               height: 56,
@@ -1007,18 +644,18 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
+                        children: const [
                           Text(
-                            _otpSent ? "INITIALIZE" : "CONNECT",
-                            style: const TextStyle(
+                            "CONNECT",
+                            style: TextStyle(
                               color: AppColors.deepSpaceBlack,
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 2.0,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const Icon(
+                          SizedBox(width: 8),
+                          Icon(
                             Icons.arrow_forward_ios_rounded,
                             color: AppColors.deepSpaceBlack,
                             size: 16,
@@ -1029,7 +666,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             ),
           ),
         );
-      }
+      },
     );
   }
 
@@ -1054,7 +691,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Celebratory icon with golden ring
                 ScaleTransition(
                   scale: _celebrationScale,
                   child: Container(

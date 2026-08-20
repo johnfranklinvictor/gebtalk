@@ -1,19 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/app_state.dart';
-import 'screens/auth_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/guest_meet_screen.dart';
 import 'theme/colors.dart';
+import 'theme/titan_theme.dart';
 import 'utils/error_handler.dart';
 
+import 'services/webrtc_service.dart';
+import 'services/api_service.dart';
+import 'widgets/call_overlay.dart';
+import 'dart:ui';
+
 void main() {
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('FLUTTER ERROR DETECTED: ${details.exception}');
+    debugPrint(details.stack?.toString());
+    try {
+      ApiService.logDebug('FLUTTER_ERROR: ${details.exception}\n${details.stack}');
+    } catch (_) {}
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('PLATFORM DISPATCHER ERROR: $error');
+    debugPrint(stack.toString());
+    try {
+      ApiService.logDebug('PLATFORM_ERROR: $error\n$stack');
+    } catch (_) {}
+    return true;
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: const Color(0xFF7F1D1D),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white, size: 30),
+                  SizedBox(width: 10),
+                  Text(
+                    'RENDER EXCEPTION DETECTED',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SelectableText(
+                details.exception.toString(),
+                style: const TextStyle(color: Color(0xFFFDE047), fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'STACK TRACE:',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                details.stack?.toString() ?? 'No stack trace available',
+                style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  };
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => AppState(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => AppState()),
+        ChangeNotifierProvider(create: (context) => WebRtcService()),
+      ],
       child: const GebTalkApp(),
     ),
   );
 }
+
 
 class GebTalkApp extends StatelessWidget {
   const GebTalkApp({super.key});
@@ -24,66 +91,24 @@ class GebTalkApp extends StatelessWidget {
       title: 'GEBTALK',
       scaffoldMessengerKey: ErrorHandler.scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: AppColors.primary,
-        scaffoldBackgroundColor: AppColors.background,
-        fontFamily: 'Product Sans',
-        fontFamilyFallback: const <String>['ProductSans', 'GoogleSans', 'sans-serif'],
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.background,
-          foregroundColor: AppColors.textMain,
-          elevation: 0,
-        ),
-        colorScheme: ColorScheme.dark(
-          primary: AppColors.primary,
-          secondary: AppColors.secondary,
-          background: AppColors.background,
-          surface: AppColors.surface,
-          onPrimary: Colors.black,
-          onSecondary: Colors.white,
-          onBackground: AppColors.textMain,
-          onSurface: AppColors.textMain,
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: AppColors.surface,
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.textLight,
-        ),
-        // Enhanced input decoration theme
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.background,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.border),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-          ),
-        ),
-        // Enhanced elevation with softer shadows
-        cardTheme: const CardThemeData(
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-          color: AppColors.surface,
-        ),
-      ),
+      theme: TitanTheme.dark,
       builder: (context, child) {
+        ApiService.logDebug('MaterialApp builder: childNull=${child == null}');
         final double width = MediaQuery.of(context).size.width;
         final bool isMobileDevice = width < 600;
+
+        final Widget wrappedChild = Stack(
+          children: [
+            if (child != null) child,
+            const CallOverlay(),
+          ],
+        );
 
         Widget body;
         if (isMobileDevice) {
           body = Scaffold(
             backgroundColor: AppColors.background,
-            body: child,
+            body: wrappedChild,
           );
         } else {
           body = Scaffold(
@@ -91,26 +116,44 @@ class GebTalkApp extends StatelessWidget {
             body: Center(
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                width: double.infinity,
+                height: double.infinity,
                 constraints: const BoxConstraints(
-                  maxWidth: 450,
-                  maxHeight: 820,
+                  maxWidth: 460,
+                  maxHeight: 860,
                 ),
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: AppColors.background,
-                  borderRadius: BorderRadius.circular(32.0),
+                  borderRadius: BorderRadius.circular(36.0),
                   boxShadow: [
+                    // Primary holographic glow
                     BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      blurRadius: 40,
-                      spreadRadius: 2,
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      blurRadius: 60,
+                      spreadRadius: 4,
                       offset: const Offset(0, 8),
                     ),
+                    // Purple accent glow
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 20,
+                      color: AppColors.nebulaPurple.withValues(alpha: 0.08),
+                      blurRadius: 50,
                       spreadRadius: 0,
-                      offset: const Offset(0, 4),
+                      offset: const Offset(-10, 0),
+                    ),
+                    // Quantum violet accent
+                    BoxShadow(
+                      color: AppColors.quantumViolet.withValues(alpha: 0.04),
+                      blurRadius: 40,
+                      spreadRadius: 0,
+                      offset: const Offset(10, 4),
+                    ),
+                    // Deep shadow for depth
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 40,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 16),
                     ),
                   ],
                   border: Border.all(
@@ -118,13 +161,27 @@ class GebTalkApp extends StatelessWidget {
                     width: 1.0,
                   ),
                 ),
-                child: child,
+                child: wrappedChild,
               ),
             ),
           );
         }
 
         return body;
+      },
+      onGenerateRoute: (settings) {
+        final uri = Uri.parse(settings.name ?? '/');
+        if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'meet') {
+          final meetingId = uri.pathSegments.length >= 2
+              ? uri.pathSegments[1]
+              : (uri.queryParameters['id'] ?? '');
+          if (meetingId.isNotEmpty) {
+            return MaterialPageRoute(
+              builder: (_) => GuestMeetScreen(meetingId: meetingId),
+            );
+          }
+        }
+        return MaterialPageRoute(builder: (_) => const SplashScreen());
       },
       home: const SplashScreen(),
     );

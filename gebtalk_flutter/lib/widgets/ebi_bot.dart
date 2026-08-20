@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/colors.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -12,10 +11,10 @@ class EbiBot extends StatefulWidget {
   final Function(int)? onTabChanged;
 
   const EbiBot({
-    Key? key,
+    super.key,
     this.screen = 'chat_list',
     this.onTabChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<EbiBot> createState() => _EbiBotState();
@@ -24,7 +23,7 @@ class EbiBot extends StatefulWidget {
 class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
   // Use right & bottom positioning to ensure EBI stays inside the constrained viewport
   double _right = 20.0;
-  double _bottom = 100.0;
+  double _bottom = 120.0; // Higher default to be above navigation bar initially
   bool _isBubbleVisible = false;
   bool _isDragging = false;
   Offset _dragStartPos = Offset.zero;
@@ -34,11 +33,19 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _waveController;
   late AnimationController _bounceController;
+  late AnimationController _snapController;
+
+  // Snap position state variables
+  double _snapStartRight = 0.0;
+  double _snapEndRight = 0.0;
+  double _snapStartBottom = 0.0;
+  double _snapEndBottom = 0.0;
 
   // Mascot states
   bool _isBlinking = false;
   bool _isWaving = false;
   bool _showSuccessBadge = false;
+  String _expression = 'normal'; // 'normal', 'happy', 'thinking', 'excited', 'surprised'
 
   Timer? _blinkTimer;
   Timer? _waveTimer;
@@ -77,6 +84,18 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+
+    // Snap animation controller
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _snapController.addListener(() {
+      setState(() {
+        _right = _snapStartRight + (_snapEndRight - _snapStartRight) * _snapController.value;
+        _bottom = _snapStartBottom + (_snapEndBottom - _snapStartBottom) * _snapController.value;
+      });
+    });
 
     // Pulse animation for glow effect
     _pulseController = AnimationController(
@@ -130,6 +149,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
   void _triggerWaving() {
     setState(() {
       _isWaving = true;
+      _expression = 'happy';
     });
     _waveController.forward().then((_) {
       _waveController.reverse().then((_) {
@@ -138,6 +158,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
             if (mounted) {
               setState(() {
                 _isWaving = false;
+                _expression = 'normal';
               });
             }
           });
@@ -149,6 +170,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
   void _triggerSuccess() {
     setState(() {
       _showSuccessBadge = true;
+      _expression = 'excited';
     });
     _bounceController.forward().then((_) {
       _bounceController.reverse().then((_) {
@@ -156,6 +178,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
           if (mounted) {
             setState(() {
               _showSuccessBadge = false;
+              _expression = 'normal';
             });
           }
         });
@@ -170,6 +193,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
     _pulseController.dispose();
     _waveController.dispose();
     _bounceController.dispose();
+    _snapController.dispose();
     super.dispose();
   }
 
@@ -284,11 +308,11 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.notifications_active, color: AppColors.primary),
-            const SizedBox(width: 8),
-            const Text("Workspace Updates", style: TextStyle(color: AppColors.textMain, fontSize: 16, fontWeight: FontWeight.bold)),
+            Icon(Icons.notifications_active, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text("Workspace Updates", style: TextStyle(color: AppColors.textMain, fontSize: 16, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -407,23 +431,38 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
     final size = MediaQuery.of(context).size;
     final quickActions = _getQuickActions();
 
+    final double minBottom = (widget.screen == 'chat_list' || widget.screen == 'settings') ? 116.0 : 20.0;
+    final double maxBottom = size.height - 60.0 - 20.0;
+    const double minRight = 20.0;
+    final double maxRight = size.width - 60.0 - 20.0;
+
+    // Safety clamp (in case size/orientation changes or keyboard opens)
+    final double safeRight = _right.clamp(minRight, maxRight.clamp(minRight, double.infinity));
+    final double safeBottom = _bottom.clamp(minBottom, maxBottom.clamp(minBottom, double.infinity));
+
+    // Dynamic bubble alignment
+    final bool isLeftAligned = safeRight > (size.width - 60.0) / 2;
+    final double? bubbleRight = isLeftAligned ? null : safeRight;
+    final double? bubbleLeft = isLeftAligned ? 20.0 : null;
+
     return Stack(
       children: [
         // Bubble Guidance Overlay
         if (_isBubbleVisible)
           Positioned(
-            right: _right,
-            bottom: _bottom + 60.0, // Floating exactly above EBI mascot
+            left: bubbleLeft,
+            right: bubbleRight,
+            bottom: safeBottom + 60.0, // Floating exactly above EBI mascot
             child: Container(
               width: 250.0,
               padding: const EdgeInsets.all(12.0),
               decoration: BoxDecoration(
-                color: AppColors.surface.withOpacity(0.95), // Semi-translucent glass light
+                color: AppColors.surface.withValues(alpha: 0.95), // Semi-translucent glass light
                 borderRadius: BorderRadius.circular(20.0),
-                border: Border.all(color: AppColors.primary.withOpacity(0.25), width: 1.5),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25), width: 1.5),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.04),
+                    color: AppColors.primary.withValues(alpha: 0.04),
                     blurRadius: 15.0,
                     spreadRadius: 2.0,
                   ),
@@ -499,7 +538,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
 
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: const Divider(color: AppColors.borderLight, height: 1.0),
+                    child: Divider(color: AppColors.borderLight, height: 1.0),
                   ),
 
                   // Quick Actions Title
@@ -524,15 +563,15 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
                             child: InkWell(
                               onTap: () => _executeAction(action['id'] as String),
                               borderRadius: BorderRadius.circular(8.0),
-                              splashColor: AppColors.primary.withOpacity(0.15),
-                              highlightColor: AppColors.primary.withOpacity(0.08),
+                              splashColor: AppColors.primary.withValues(alpha: 0.15),
+                              highlightColor: AppColors.primary.withValues(alpha: 0.08),
                               child: Container(
                                 margin: const EdgeInsets.only(bottom: 4.0),
                                 padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.04),
+                                  color: AppColors.primary.withValues(alpha: 0.04),
                                   borderRadius: BorderRadius.circular(8.0),
-                                  border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
                                 ),
                                 child: Row(
                                   children: [
@@ -544,7 +583,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
                                         style: const TextStyle(color: AppColors.textMain, fontSize: 12.0),
                                       ),
                                     ),
-                                    Icon(Icons.chevron_right, color: AppColors.textLight, size: 14.0),
+                                    const Icon(Icons.chevron_right, color: AppColors.textLight, size: 14.0),
                                   ],
                                 ),
                               ),
@@ -561,8 +600,8 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
 
         // Draggable Mascot Avatar positioned using right/bottom constraints
         Positioned(
-          right: _right,
-          bottom: _bottom,
+          right: safeRight,
+          bottom: safeBottom,
           child: GestureDetector(
             onTap: () {
               _triggerWaving();
@@ -572,8 +611,12 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
               });
             },
             onPanStart: (details) {
+              _snapController.stop();
               _isDragging = false;
               _dragStartPos = details.globalPosition;
+              setState(() {
+                _expression = 'surprised';
+              });
             },
             onPanUpdate: (details) {
               final distance = (details.globalPosition - _dragStartPos).distance;
@@ -584,13 +627,25 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
                 setState(() {
                   _right -= details.delta.dx;
                   _bottom -= details.delta.dy;
-                  _right = _right.clamp(10.0, size.width - 70.0);
-                  _bottom = _bottom.clamp(20.0, size.height - 250.0);
+                  _right = _right.clamp(minRight, maxRight);
+                  _bottom = _bottom.clamp(minBottom, maxBottom);
                 });
               }
             },
             onPanEnd: (_) {
               _isDragging = false;
+              // Snap Docking System
+              final targetRight = _right < (size.width - 60.0) / 2 ? minRight : maxRight;
+              final targetBottom = _bottom.clamp(minBottom, maxBottom);
+              
+              _snapStartRight = _right;
+              _snapStartBottom = _bottom;
+              _snapEndRight = targetRight;
+              _snapEndBottom = targetBottom;
+              _snapController.forward(from: 0.0);
+              setState(() {
+                _expression = 'normal';
+              });
             },
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
@@ -678,7 +733,7 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
                                         spreadRadius: 1.0,
                                       ),
                                     ],
-                              border: Border.all(color: AppColors.primary.withOpacity(0.5), width: 1.5),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.5), width: 1.5),
                             ),
                             child: Center(
                               // EBI Custom Animated Mascot Face
@@ -705,19 +760,27 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
                                       color: AppColors.background,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: AppColors.primary.withOpacity(0.1),
-                                          blurRadius: 4,
+                                          color: AppColors.primary.withValues(alpha: 0.15),
+                                          blurRadius: 6,
                                         ),
                                       ],
                                     ),
                                     child: Center(
-                                      // Glowing LED Eyes
-                                      child: Row(
+                                      child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          _buildEye(),
-                                          const SizedBox(width: 4),
-                                          _buildEye(),
+                                          // Glowing LED Eyes
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              _buildEyeWidget(true),
+                                              const SizedBox(width: 4),
+                                              _buildEyeWidget(false),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          // LED Mouth
+                                          _buildMouthWidget(),
                                         ],
                                       ),
                                     ),
@@ -766,22 +829,118 @@ class _EbiBotState extends State<EbiBot> with TickerProviderStateMixin {
     );
   }
 
-  // Custom Animated Eye
-  Widget _buildEye() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 100),
-      width: 6.0,
-      height: _isBlinking ? 1.0 : 6.0, // Flattens to horizontal slit when blinking
-      decoration: BoxDecoration(
+  // Custom Animated Eye based on Expression
+  Widget _buildEyeWidget(bool isLeft) {
+    if (_isBlinking) {
+      return Container(
+        width: 6.0,
+        height: 1.0,
         color: AppColors.primary,
-        borderRadius: BorderRadius.circular(3.0),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.primary,
-            blurRadius: 4.0,
+      );
+    }
+
+    switch (_expression) {
+      case 'happy':
+        return Transform.rotate(
+          angle: isLeft ? -0.3 : 0.3,
+          child: const Text(
+            "^",
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              height: 0.8,
+            ),
           ),
-        ],
-      ),
-    );
+        );
+      case 'excited':
+        return const Icon(
+          Icons.star_rounded,
+          color: AppColors.primary,
+          size: 9,
+        );
+      case 'surprised':
+        return Container(
+          width: 7.0,
+          height: 7.0,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary,
+            boxShadow: [
+              BoxShadow(color: AppColors.primary, blurRadius: 4),
+            ],
+          ),
+        );
+      case 'thinking':
+        return Transform.translate(
+          offset: const Offset(1, -1),
+          child: Container(
+            width: 4.5,
+            height: 4.5,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary,
+            ),
+          ),
+        );
+      default:
+        return Container(
+          width: 5.5,
+          height: 5.5,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.8),
+                blurRadius: 3,
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  // Custom LED Mouth based on Expression
+  Widget _buildMouthWidget() {
+    switch (_expression) {
+      case 'happy':
+      case 'excited':
+        return Container(
+          width: 8,
+          height: 3,
+          decoration: const BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(4),
+              bottomRight: Radius.circular(4),
+            ),
+          ),
+        );
+      case 'surprised':
+        return Container(
+          width: 4,
+          height: 4,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary,
+          ),
+        );
+      case 'thinking':
+        return Container(
+          width: 6,
+          height: 1,
+          color: AppColors.primary,
+        );
+      default:
+        return Container(
+          width: 4,
+          height: 1.5,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(1),
+          ),
+        );
+    }
   }
 }

@@ -1,17 +1,21 @@
 import 'dart:convert';
 import 'dart:io' as io;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/app_state.dart';
+import '../services/webrtc_service.dart';
 import '../theme/colors.dart';
 import '../models/chat_models.dart';
 import 'auth_screen.dart';
 import '../utils/error_handler.dart';
 import '../widgets/ebi_bot.dart';
 import '../widgets/animations.dart';
+import '../widgets/titan_glass_panel.dart';
+import '../widgets/titan_background.dart';
+import '../widgets/email_verification_modal.dart';
+import '../widgets/create_account_modal.dart';
+import '../widgets/change_password_modal.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(int)? onTabChanged;
@@ -78,13 +82,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final ext = file.extension ?? 'png';
         final dataUrl = 'data:image/$ext;base64,$base64String';
 
+        if (!mounted) return;
         final appState = Provider.of<AppState>(context, listen: false);
         if (appState.currentProfile != null) {
           final updatedProfile = appState.currentProfile!.copyWith(avatar: dataUrl);
           setState(() => _isSaving = true);
           final success = await appState.updateProfile(updatedProfile);
           setState(() => _isSaving = false);
-          if (success) {
+          if (success && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text("Profile picture updated successfully!")),
             );
@@ -102,10 +107,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final appState = Provider.of<AppState>(context, listen: false);
     if (appState.currentProfile == null) return;
 
+    final isCeo = appState.isCeo;
     final updated = appState.currentProfile!.copyWith(
       name: _nameController.text.trim(),
       role: _roleController.text.trim(),
-      email: _emailController.text.trim(),
+      email: isCeo ? _emailController.text.trim() : appState.currentProfile!.email,
     );
 
     setState(() {
@@ -152,6 +158,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               onPressed: () {
                 final appState = Provider.of<AppState>(context, listen: false);
+                Provider.of<WebRtcService>(context, listen: false).resetForLogout();
                 appState.logout();
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const AuthScreen()),
@@ -190,11 +197,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 110), // Bottom padding for floating nav bar
+      body: TitanBackground(
+        preset: 'lounge',
+        child: Stack(
+          children: [
+            SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 110), // Bottom padding for floating nav bar
               children: [
                 // ── Header Banner ──
                 _buildHeader(),
@@ -202,6 +211,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 // ── Profile Picture & Identity Card ──
                 _buildIdentityCard(profile),
+                const SizedBox(height: 20),
+
+                // ── Administrative User Provisioning Card (CEO / Manager) ──
+                if (appState.canCreateAccounts && !appState.isCustomerRole && !appState.isStaffRole) ...[
+                  _buildAdminProvisioningCard(appState),
+                  const SizedBox(height: 20),
+                ],
+
+                // ── Email Identity & VoIP Card ──
+                _buildEmailIdentityCard(profile),
                 const SizedBox(height: 20),
 
                 // ── Form Details Panel ──
@@ -230,6 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           EbiBot(screen: 'settings', onTabChanged: widget.onTabChanged),
         ],
       ),
+     ),
     );
   }
 
@@ -240,9 +260,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
           ),
           child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
         ),
@@ -264,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(
               "Manage profile settings, identity records, and notifications.",
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 11,
                 fontFamily: 'Product Sans',
               ),
@@ -276,13 +296,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildIdentityCard(UserProfile profile) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
+    return TitanGlassPanel(
+      glowColor: AppColors.accentForRole(profile.role),
       child: Column(
         children: [
           // Avatar upload sphere
@@ -296,21 +311,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     gradient: AppColors.primaryGradient,
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withOpacity(0.35),
+                        color: AppColors.primary.withValues(alpha: 0.35),
                         blurRadius: 18,
                         spreadRadius: 2,
                       ),
                     ],
                   ),
-                  child: CircleAvatar(
-                    radius: 56,
-                    backgroundImage: profile.avatar.isNotEmpty
-                        ? _getAvatarImage(profile.avatar)
-                        : null,
-                    backgroundColor: AppColors.background,
-                    child: profile.avatar.isEmpty
-                        ? const Icon(Icons.person, size: 50, color: AppColors.primary)
-                        : null,
+                  child: SizedBox(
+                    width: 112,
+                    height: 112,
+                    child: profile.avatar.isNotEmpty
+                        ? ClipOval(
+                            child: Image(
+                              image: _getAvatarImage(profile.avatar),
+                              width: 112,
+                              height: 112,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: AppColors.background,
+                                  child: const Icon(Icons.person, size: 50, color: AppColors.primary),
+                                );
+                              },
+                            ),
+                          )
+                        : const CircleAvatar(
+                            radius: 56,
+                            backgroundColor: AppColors.background,
+                            child: Icon(Icons.person, size: 50, color: AppColors.primary),
+                          ),
                   ),
                 ),
                 Positioned(
@@ -327,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         border: Border.all(color: AppColors.surface, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.orangeGlow.withOpacity(0.4),
+                            color: AppColors.orangeGlow.withValues(alpha: 0.4),
                             blurRadius: 8,
                           ),
                         ],
@@ -381,14 +410,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildDetailsForm() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+  Widget _buildAdminProvisioningCard(AppState appState) {
+    final isCeo = appState.isCeo;
+    final roleTitle = isCeo ? 'CEO Executive Console' : 'Manager Provisioning Console';
+    final roleBadgeColor = isCeo ? const Color(0xFF60A5FA) : const Color(0xFFA855F7);
+
+    return TitanGlassPanel(
+      glowColor: roleBadgeColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: roleBadgeColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: roleBadgeColor.withOpacity(0.3)),
+                ),
+                child: Icon(Icons.admin_panel_settings_rounded, color: roleBadgeColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      roleTitle,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Product Sans',
+                      ),
+                    ),
+                    Text(
+                      isCeo 
+                          ? 'Provision Manager, Staff & Customer accounts' 
+                          : 'Provision Staff & Customer accounts with specialist routing',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.55),
+                        fontSize: 11,
+                        fontFamily: 'Product Sans',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: roleBadgeColor.withOpacity(0.2),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                side: BorderSide(color: roleBadgeColor.withOpacity(0.5), width: 1.2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: () => CreateAccountModal.show(context),
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+              label: const Text(
+                'Create & Provision User Account',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildDetailsForm() {
+    final appState = Provider.of<AppState>(context, listen: false);
+    final profile = appState.currentProfile;
+    final String currentRole = (profile?.role ?? _roleController.text).toLowerCase().trim();
+    final bool isUserCeo = !currentRole.contains('customer') &&
+        !currentRole.contains('client') &&
+        !currentRole.contains('staff') &&
+        !currentRole.contains('specialist') &&
+        !currentRole.contains('manager') &&
+        (currentRole == 'ceo' ||
+            currentRole == 'founder' ||
+            currentRole == 'chief executive' ||
+            currentRole.startsWith('ceo ') ||
+            currentRole.endsWith(' ceo') ||
+            currentRole == 'global ceo') &&
+        appState.isCeo;
+
+    return TitanGlassPanel(
+      glowColor: AppColors.accentForRole(appState.currentProfile?.role ?? ''),
       child: Form(
         key: _formKey,
         child: Column(
@@ -413,10 +528,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           setState(() {
                             if (_isEditing) {
                               // Reset details on cancel
-                              final profile = Provider.of<AppState>(context, listen: false).currentProfile;
-                              _nameController.text = profile?.name ?? '';
-                              _roleController.text = profile?.role ?? '';
-                              _emailController.text = profile?.email ?? '';
+                              final p = Provider.of<AppState>(context, listen: false).currentProfile;
+                              _nameController.text = p?.name ?? '';
+                              _roleController.text = p?.role ?? '';
+                              _emailController.text = p?.email ?? '';
                             }
                             _isEditing = !_isEditing;
                           });
@@ -456,12 +571,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 6),
             TextFormField(
               controller: _roleController,
-              enabled: _isEditing && !_isSaving,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+              enabled: isUserCeo && _isEditing && !_isSaving,
+              style: TextStyle(
+                color: (isUserCeo || !_isEditing) ? Colors.white : Colors.white60,
+                fontSize: 13,
+              ),
               validator: (val) => val == null || val.trim().isEmpty ? "Role cannot be empty" : null,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.work_outline, color: AppColors.textLight, size: 18),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.work_outline, color: AppColors.textLight, size: 18),
                 hintText: "Enter corporate role",
+                helperText: !isUserCeo && _isEditing ? "Corporate role is assigned by the CEO" : null,
+                helperStyle: const TextStyle(color: Colors.white38, fontSize: 11),
+                suffixIcon: !isUserCeo && _isEditing ? const Icon(Icons.lock_outline_rounded, color: Colors.white38, size: 16) : null,
               ),
             ),
             const SizedBox(height: 14),
@@ -469,16 +590,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 6),
             TextFormField(
               controller: _emailController,
-              enabled: _isEditing && !_isSaving,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+              enabled: isUserCeo && _isEditing && !_isSaving,
+              style: TextStyle(
+                color: (isUserCeo || !_isEditing) ? Colors.white : Colors.white60,
+                fontSize: 13,
+              ),
               validator: (val) {
                 if (val == null || val.trim().isEmpty) return "Email cannot be empty";
                 if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val.trim())) return "Invalid email address";
                 return null;
               },
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.email_outlined, color: AppColors.textLight, size: 18),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textLight, size: 18),
                 hintText: "Enter email address",
+                helperText: !isUserCeo ? "Login email is managed exclusively by the CEO" : null,
+                helperStyle: const TextStyle(color: Colors.white38, fontSize: 11),
+                suffixIcon: !isUserCeo ? const Icon(Icons.lock_outline_rounded, color: Colors.white38, size: 16) : null,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _buildFieldLabel("Account Password"),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: isUserCeo ? () => ChangePasswordModal.show(context) : null,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceCard.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, color: AppColors.textLight, size: 18),
+                    const SizedBox(width: 12),
+                    const Text(
+                      "••••••••••••",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isUserCeo)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.key_rounded, color: AppColors.primary, size: 13),
+                            SizedBox(width: 5),
+                            Text(
+                              "Change Password",
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Product Sans',
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_rounded, color: Colors.white38, size: 13),
+                            SizedBox(width: 5),
+                            Text(
+                              "Managed by CEO",
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Product Sans',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             if (_isEditing) ...[
@@ -493,7 +701,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withOpacity(0.2),
+                        color: AppColors.primary.withValues(alpha: 0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -527,6 +735,194 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildEmailIdentityCard(UserProfile profile) {
+    final bool isVerified = profile.email.isNotEmpty && (profile.verificationStatus == 'Verified');
+    final appState = Provider.of<AppState>(context, listen: false);
+    final String currentRole = profile.role.toLowerCase().trim();
+    final bool isUserCeo = !currentRole.contains('customer') &&
+        !currentRole.contains('client') &&
+        !currentRole.contains('staff') &&
+        !currentRole.contains('specialist') &&
+        !currentRole.contains('manager') &&
+        (currentRole == 'ceo' ||
+            currentRole == 'founder' ||
+            currentRole == 'chief executive' ||
+            currentRole.startsWith('ceo ') ||
+            currentRole.endsWith(' ceo') ||
+            currentRole == 'global ceo') &&
+        appState.isCeo;
+    
+    return TitanGlassPanel(
+      glowColor: isVerified ? AppColors.primary : Colors.orangeAccent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isVerified
+                          ? AppColors.primary.withValues(alpha: 0.15)
+                          : Colors.orangeAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isVerified ? Icons.mark_email_read_rounded : Icons.mail_outline_rounded,
+                      color: isVerified ? AppColors.primary : Colors.orangeAccent,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    "Email & VoIP Identity",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Product Sans',
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isVerified
+                      ? AppColors.primary.withValues(alpha: 0.15)
+                      : Colors.orangeAccent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isVerified
+                        ? AppColors.primary.withValues(alpha: 0.4)
+                        : Colors.orangeAccent.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isVerified ? Icons.check_circle_rounded : Icons.pending_rounded,
+                      size: 12,
+                      color: isVerified ? AppColors.primary : Colors.orangeAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isVerified ? "Verified ID" : "Unverified",
+                      style: TextStyle(
+                        color: isVerified ? AppColors.primary : Colors.orangeAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Product Sans',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            profile.email.isNotEmpty ? profile.email : "No email linked to this GebTalk account",
+            style: TextStyle(
+              color: profile.email.isNotEmpty ? Colors.white : AppColors.textMuted,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Product Sans',
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "Linking your verified email allows clients and staff to call you via email link and dispatches Missed VoIP Call Alerts when you are offline.",
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              height: 1.4,
+              fontFamily: 'Product Sans',
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (isUserCeo)
+            TapScaleWidget(
+              onTap: () => EmailVerificationModal.show(
+                context,
+                initialEmail: profile.email,
+                onVerified: () {
+                  setState(() {
+                    _emailController.text = Provider.of<AppState>(context, listen: false).currentProfile?.email ?? '';
+                  });
+                },
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                decoration: BoxDecoration(
+                  color: isVerified
+                      ? AppColors.primary.withValues(alpha: 0.12)
+                      : AppColors.primary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isVerified ? AppColors.primary.withValues(alpha: 0.3) : AppColors.primary,
+                  ),
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isVerified ? Icons.edit_rounded : Icons.verified_user_rounded,
+                        size: 15,
+                        color: isVerified ? AppColors.primary : Colors.black,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isVerified ? "Change / Re-verify Email" : "Verify Email Address with OTP",
+                        style: TextStyle(
+                          color: isVerified ? AppColors.primary : Colors.black,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Product Sans',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.lock_rounded, size: 14, color: Colors.white38),
+                  SizedBox(width: 8),
+                  Text(
+                    "Login email is managed exclusively by the CEO",
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Product Sans',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFieldLabel(String label) {
     return Text(
       label,
@@ -540,13 +936,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildPreferencesCard(AppState appState, UserProfile profile) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
+    return TitanGlassPanel(
+      glowColor: AppColors.accentForRole(profile.role),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -604,6 +995,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
               appState.updateProfile(profile.copyWith(readReceipts: val));
             },
           ),
+          const Divider(color: AppColors.borderLight, height: 20),
+          _buildToggleRow(
+            icon: Icons.visibility_outlined,
+            title: "Show Last Seen Status",
+            value: profile.lastSeenVisible,
+            onChanged: (val) {
+              appState.updateProfile(profile.copyWith(lastSeenVisible: val));
+            },
+          ),
+          if (appState.hasAdminPrivileges) ...[
+            const Divider(color: AppColors.borderLight, height: 20),
+            _buildToggleRow(
+              icon: Icons.admin_panel_settings_outlined,
+              title: "Staff View Mode (Preview Permissions)",
+              value: !appState.isAdmin,
+              onChanged: (val) {
+                if (val != !appState.isAdmin) {
+                  appState.toggleAdminMode();
+                }
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -621,7 +1034,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.06),
+            color: AppColors.primary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: AppColors.primary, size: 16),
@@ -641,20 +1054,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           value: value,
           onChanged: onChanged,
           activeColor: AppColors.primary,
-          activeTrackColor: AppColors.primary.withOpacity(0.3),
+          activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
         ),
       ],
     );
   }
 
   Widget _buildAppInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
+    final appState = Provider.of<AppState>(context, listen: false);
+    return TitanGlassPanel(
+      glowColor: AppColors.accentForRole(appState.currentProfile?.role ?? ''),
       child: Column(
         children: [
           Row(
@@ -664,16 +1073,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 height: 38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.primary.withOpacity(0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                 ),
                 child: const Center(
                   child: Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 20),
                 ),
               ),
               const SizedBox(width: 12),
-              Column(
+              const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     "GEBTALK Corporate HQ",
                     style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Product Sans'),
@@ -693,7 +1102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             "Designed and compiled exclusively for EB GLOBAL digital workspace environments. All transmissions encrypted.",
             style: TextStyle(
-              color: AppColors.textMuted.withOpacity(0.8),
+              color: AppColors.textMuted.withValues(alpha: 0.8),
               fontSize: 10.5,
               height: 1.45,
               fontFamily: 'Product Sans',
@@ -705,13 +1114,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildContactInfoCard(UserProfile profile) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
+    return TitanGlassPanel(
+      glowColor: AppColors.accentForRole(profile.role),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -732,7 +1136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.verified_rounded, color: AppColors.primary, size: 20),
@@ -885,11 +1289,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.secondary.withOpacity(0.4), width: 1.5),
+          border: Border.all(color: AppColors.secondary.withValues(alpha: 0.4), width: 1.5),
         ),
-        child: Row(
+        child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.logout_rounded, color: AppColors.secondary, size: 18),
             SizedBox(width: 8),
             Text(
