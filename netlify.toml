@@ -3,6 +3,12 @@
   publish = "gebtalk_flutter/build/web"
 
 [[redirects]]
+  from = "/api/*"
+  to = "https://long-tigers-wish.loca.lt/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
