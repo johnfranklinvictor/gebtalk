@@ -32,11 +32,23 @@ class _ContactInfoScreenState extends State<ContactInfoScreen> with SingleTicker
   }
 
   void _startAudioCall() {
+    final appState = Provider.of<AppState>(context, listen: false);
+    final isSelf = widget.contact.id == appState.currentProfile?.id || (widget.contact.email.isNotEmpty && widget.contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+    if (isSelf) {
+      ErrorHandler.showError('Voice calls cannot be placed to your own account.');
+      return;
+    }
     final webrtcService = Provider.of<WebRtcService>(context, listen: false);
     webrtcService.startCall(widget.contact.id, widget.contact.name, peerAvatar: widget.contact.avatar);
   }
 
   void _startVideoCall() {
+    final appState = Provider.of<AppState>(context, listen: false);
+    final isSelf = widget.contact.id == appState.currentProfile?.id || (widget.contact.email.isNotEmpty && widget.contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+    if (isSelf) {
+      ErrorHandler.showError('Video calls cannot be placed to your own account.');
+      return;
+    }
     final webrtcService = Provider.of<WebRtcService>(context, listen: false);
     webrtcService.startCall(widget.contact.id, widget.contact.name, peerAvatar: widget.contact.avatar);
   }

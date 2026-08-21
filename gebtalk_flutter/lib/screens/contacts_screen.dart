@@ -688,17 +688,35 @@ class _ContactsScreenState extends State<ContactsScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.call_outlined, color: Color(0xFF10B981), size: 19),
-            tooltip: 'Internet Voice Call',
+            icon: Icon(
+              Icons.call_outlined,
+              color: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? Colors.white24 : const Color(0xFF10B981),
+              size: 19,
+            ),
+            tooltip: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? 'Calling disabled for self' : 'Internet Voice Call',
             onPressed: () {
+              final isSelf = contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+              if (isSelf) {
+                ErrorHandler.showError('Voice calls cannot be placed to your own account.');
+                return;
+              }
               final webrtcService = Provider.of<WebRtcService>(context, listen: false);
               webrtcService.startCall(contact.id, contact.name, peerAvatar: contact.avatar);
             },
           ),
           IconButton(
-            icon: const Icon(Icons.videocam_outlined, color: Color(0xFF8B5CF6), size: 19),
-            tooltip: 'Video Call',
+            icon: Icon(
+              Icons.videocam_outlined,
+              color: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? Colors.white24 : const Color(0xFF8B5CF6),
+              size: 19,
+            ),
+            tooltip: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? 'Calling disabled for self' : 'Video Call',
             onPressed: () {
+              final isSelf = contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+              if (isSelf) {
+                ErrorHandler.showError('Video calls cannot be placed to your own account.');
+                return;
+              }
               final webrtcService = Provider.of<WebRtcService>(context, listen: false);
               webrtcService.startCall(contact.id, contact.name, peerAvatar: contact.avatar);
             },

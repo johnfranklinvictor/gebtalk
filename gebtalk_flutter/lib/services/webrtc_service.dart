@@ -334,6 +334,15 @@ class WebRtcService extends ChangeNotifier {
     }
 
     currentPeerId = targetSignalingId;
+    
+    // Prevent self-calling
+    if (currentUserId == targetSignalingId || (currentPeerEmail != null && currentPeerEmail == currentUserId)) {
+      statusMessage = 'Cannot Call Yourself';
+      errorMessage = 'You cannot initiate a call to your own account.';
+      _transitionToTerminalState('failed');
+      return;
+    }
+
     callState = 'calling';
     statusMessage = 'Calling...';
     errorMessage = null;
@@ -391,6 +400,15 @@ class WebRtcService extends ChangeNotifier {
         statusMessage = 'Call Restricted (Unauthorized)';
         errorMessage = 'You do not have authorization to call this contact.';
         _transitionToTerminalState('failed');
+      } else if (response.statusCode == 400) {
+        try {
+          final errData = json.decode(response.body);
+          statusMessage = errData['error'] ?? 'Cannot Place Call';
+          errorMessage = errData['error'] ?? 'Cannot Place Call';
+        } catch (_) {
+          statusMessage = 'Cannot Place Call';
+        }
+        _transitionToTerminalState('failed');
       } else {
         statusMessage = 'Call Failed';
         _transitionToTerminalState('failed');
@@ -398,6 +416,7 @@ class WebRtcService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[WebRTC] Error starting WebRTC call: $e');
       statusMessage = 'Connection Error';
+      errorMessage = 'Could not connect call. Check network.';
       _transitionToTerminalState('failed');
     }
   }
@@ -540,7 +559,7 @@ class WebRtcService extends ChangeNotifier {
     } else if (finalState == 'declined') {
       statusMessage = 'Call Declined';
     } else if (finalState == 'failed') {
-      statusMessage = errorMessage ?? 'Call Failed';
+      statusMessage = statusMessage ?? errorMessage ?? 'Call Failed';
     } else if (finalState == 'cancelled') {
       statusMessage = 'Call Cancelled';
     } else {

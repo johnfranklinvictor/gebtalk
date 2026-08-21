@@ -1175,29 +1175,39 @@ class _ChatDetailContentState extends State<ChatDetailContent>
               ),
               // Video Call
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.videocam_rounded,
-                  color: Colors.white,
+                  color: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? Colors.white24 : Colors.white,
                   size: 22,
                 ),
                 onPressed: () {
+                  final isSelf = contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+                  if (isSelf) {
+                    ErrorHandler.showError('Voice & video calls are disabled for your own account.');
+                    return;
+                  }
                   final webrtcService = Provider.of<WebRtcService>(context, listen: false);
                   webrtcService.startCall(contact.id, contact.name, peerAvatar: contact.avatar);
                 },
-                tooltip: 'Video Call',
+                tooltip: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? 'Calling disabled for self' : 'Video Call',
               ),
               // Voice Call
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.call_rounded,
-                  color: Colors.white,
+                  color: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? Colors.white24 : Colors.white,
                   size: 22,
                 ),
                 onPressed: () {
+                  final isSelf = contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase());
+                  if (isSelf) {
+                    ErrorHandler.showError('Voice & video calls are disabled for your own account.');
+                    return;
+                  }
                   final webrtcService = Provider.of<WebRtcService>(context, listen: false);
                   webrtcService.startCall(contact.id, contact.name, peerAvatar: contact.avatar);
                 },
-                tooltip: 'Internet Voice Call',
+                tooltip: (contact.id == appState.currentProfile?.id || (contact.email.isNotEmpty && contact.email.toLowerCase() == appState.userEmail?.toLowerCase())) ? 'Calling disabled for self' : 'Internet Voice Call',
               ),
               // Info Panel Toggle
               IconButton(

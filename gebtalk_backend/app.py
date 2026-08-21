@@ -2124,6 +2124,9 @@ def create_call():
     if not caller_id or not callee_id or not sdp_offer:
         return jsonify({'error': 'Missing required parameters'}), 400
 
+    if str(caller_id).lower() == str(callee_id).lower():
+        return jsonify({'error': 'Cannot initiate voice call to yourself', 'status': 'self_call'}), 400
+
     # 0. Role-based calling authorization check
     if not is_call_authorized(caller_id, callee_id):
         return jsonify({
