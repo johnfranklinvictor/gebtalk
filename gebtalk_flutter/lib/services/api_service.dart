@@ -27,7 +27,7 @@ class ApiService {
       final host = Uri.base.host.isNotEmpty ? Uri.base.host : '127.0.0.1';
       if (host != 'localhost' && host != '127.0.0.1' && !host.startsWith('192.168.') && !host.startsWith('10.')) {
         // Production web deployment (e.g. Netlify)
-        return '${Uri.base.origin}/api';
+        return 'https://marilyn-reviews-modify-fascinating.trycloudflare.com/api';
       }
       return 'http://$host:5000/api';
     } else {
