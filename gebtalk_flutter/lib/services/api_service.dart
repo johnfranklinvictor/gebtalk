@@ -93,6 +93,36 @@ class ApiService {
     return null;
   }
 
+  static String? lastAuthError;
+
+  static dynamic _parseJsonResponse(http.Response response, {String? defaultErrorMessage}) {
+    if (response.statusCode >= 500) {
+      lastAuthError = 'SERVER_ERROR';
+      ErrorHandler.showError('Backend Server Unavailable (HTTP ${response.statusCode}). Please check server status.');
+      return null;
+    }
+    final body = response.body.trim();
+    if (body.isEmpty || body.startsWith('<') || (!body.startsWith('{') && !body.startsWith('['))) {
+      lastAuthError = 'SERVER_ERROR';
+      ErrorHandler.showError('Backend server returned unexpected response (HTTP ${response.statusCode}). Check server endpoint in Settings (⚙️).');
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(body);
+      if (response.statusCode >= 400) {
+        lastAuthError = (decoded is Map && decoded['error'] != null) ? decoded['error'].toString() : 'AUTH_FAILED';
+        ErrorHandler.showError(lastAuthError ?? defaultErrorMessage ?? 'Request failed (${response.statusCode})');
+        return null;
+      }
+      lastAuthError = null;
+      return decoded;
+    } catch (e) {
+      lastAuthError = 'PARSE_ERROR';
+      ErrorHandler.showError('Malformed response from server. Check backend status.');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> sendOtp(String phone) async {
     try {
       final response = await http.post(
@@ -100,12 +130,14 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'phone': phone}),
       ).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final data = _parseJsonResponse(response, defaultErrorMessage: 'Failed to send OTP');
+      if (data != null && data is Map<String, dynamic>) {
+        return data;
       }
     } catch (e) {
       debugPrint('API Error: $e');
-      ErrorHandler.showError('Network Error: $e');
+      lastAuthError = 'NETWORK_ERROR';
+      ErrorHandler.showError('Network Error: Unable to reach backend server.');
     }
     return null;
   }
@@ -117,12 +149,14 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'name': name}),
       ).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final data = _parseJsonResponse(response, defaultErrorMessage: 'Failed to send Email OTP');
+      if (data != null && data is Map<String, dynamic>) {
+        return data;
       }
     } catch (e) {
       debugPrint('API Error: $e');
-      ErrorHandler.showError('Network Error: $e');
+      lastAuthError = 'NETWORK_ERROR';
+      ErrorHandler.showError('Network Error: Unable to reach backend server.');
     }
     return null;
   }
@@ -138,16 +172,17 @@ class ApiService {
           'name': name,
         }),
       ).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data != null && data['token'] != null) {
+      final data = _parseJsonResponse(response, defaultErrorMessage: 'Invalid Email OTP');
+      if (data != null && data is Map<String, dynamic>) {
+        if (data['token'] != null) {
           authenticatedPhone = data['token'];
         }
         return data;
       }
     } catch (e) {
       debugPrint('API Error: $e');
-      ErrorHandler.showError('Network Error: $e');
+      lastAuthError = 'NETWORK_ERROR';
+      ErrorHandler.showError('Network Error: Unable to reach backend server.');
     }
     return null;
   }
@@ -165,24 +200,17 @@ class ApiService {
         }),
       ).timeout(const Duration(seconds: 30));
 
-      final body = response.body.trim();
-      if (body.startsWith('<')) {
-        ErrorHandler.showError('API server returned unexpected response. Check server endpoint in Settings (⚙️).');
-        return null;
-      }
-
-      final data = jsonDecode(body);
-      if (response.statusCode == 200) {
-        if (data != null && data['token'] != null) {
+      final data = _parseJsonResponse(response, defaultErrorMessage: 'Invalid username/email or password');
+      if (data != null && data is Map<String, dynamic>) {
+        if (data['token'] != null) {
           authenticatedPhone = data['token'];
         }
         return data;
-      } else {
-        ErrorHandler.showError(data['error'] ?? 'Invalid username/email or password');
       }
     } catch (e) {
       debugPrint('API Error: $e');
-      ErrorHandler.showError('Network Error: $e');
+      lastAuthError = 'NETWORK_ERROR';
+      ErrorHandler.showError('Network Error: Unable to reach backend server.');
     }
     return null;
   }
@@ -208,16 +236,17 @@ class ApiService {
           'country_flag': countryFlag,
         }),
       ).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data != null && data['token'] != null) {
+      final data = _parseJsonResponse(response, defaultErrorMessage: 'Invalid OTP code');
+      if (data != null && data is Map<String, dynamic>) {
+        if (data['token'] != null) {
           authenticatedPhone = data['token'];
         }
         return data;
       }
     } catch (e) {
       debugPrint('API Error: $e');
-      ErrorHandler.showError('Network Error: $e');
+      lastAuthError = 'NETWORK_ERROR';
+      ErrorHandler.showError('Network Error: Unable to reach backend server.');
     }
     return null;
   }

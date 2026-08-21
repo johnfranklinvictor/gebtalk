@@ -4,7 +4,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "https://long-tigers-wish.loca.lt/api/:splat"
+  to = "https://chubby-flowers-smile.loca.lt/api/:splat"
   status = 200
   force = true
 

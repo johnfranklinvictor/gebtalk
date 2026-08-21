@@ -149,7 +149,13 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       }
     } else {
       setState(() {
-        _errorMessage = 'INVALID USERNAME OR PASSWORD';
+        if (ApiService.lastAuthError == 'SERVER_ERROR' || ApiService.lastAuthError == 'NETWORK_ERROR') {
+          _errorMessage = 'SERVER OFFLINE - CHECK SETTINGS (⚙️)';
+        } else if (ApiService.lastAuthError != null && ApiService.lastAuthError != 'AUTH_FAILED') {
+          _errorMessage = ApiService.lastAuthError!.toUpperCase();
+        } else {
+          _errorMessage = 'INVALID USERNAME OR PASSWORD';
+        }
       });
     }
   }
